@@ -36,7 +36,7 @@ time_t nextEnd   = 0;
 String nextTitle = "";
 
 // refresh control
-const unsigned long CAL_REFRESH_MS = 10UL * 60UL * 1000UL;          // calendar pull interval
+const unsigned long CAL_REFRESH_MS = 1UL * 60UL * 1000UL;          // calendar pull interval
 const unsigned long AFTER_EVENT_REFETCH_COOLDOWN_MS = 15000;        // after-event cooldown
 
 unsigned long lastCalFetch = 0;
@@ -121,6 +121,15 @@ void drawEventPage(const String& t, const String& title) {
   u8g2.sendBuffer();
 }
 
+void drawStatus(const String& l1, const String& l2 = "") {
+  u8g2.clearBuffer();
+  u8g2.setDrawColor(1);
+  u8g2.setFont(u8g2_font_6x10_tr);
+  u8g2.drawStr(0, 14, l1.c_str());
+  if (l2.length()) u8g2.drawStr(0, 30, l2.c_str());
+  u8g2.sendBuffer();
+}
+
 // ================= timegm replacement =================
 time_t timegm_portable(struct tm* tm) {
   String oldTZ = getenv("TZ") ? getenv("TZ") : "";
@@ -146,6 +155,9 @@ bool parseIcsDate(const String& dt, time_t& out) {
     tmv.tm_min  = dt.substring(11,13).toInt();
     tmv.tm_sec  = dt.substring(13,15).toInt();
   }
+
+  // Let libc determine DST for local-time conversions
+  tmv.tm_isdst = -1;
 
   out = dt.endsWith("Z") ? timegm_portable(&tmv) : mktime(&tmv);
   return out > 0;
@@ -241,13 +253,24 @@ void setup() {
 
   pinMode(BOOT_PIN, INPUT_PULLUP);
 
+  drawStatus("BOOT", "WiFi...");
   WiFi.begin(ssid, password);
   while (WiFi.status() != WL_CONNECTED) delay(300);
 
+  drawStatus("NTP", "Sync...");
   // Configure SNTP with local timezone (handles CET/CEST automatically)
   configTzTime(TZ_INFO, "pool.ntp.org", "time.nist.gov");
 
-  while (time(nullptr) < 1700000000) delay(200);
+  // Don't block forever if NTP is unreachable
+  const unsigned long NTP_TIMEOUT_MS = 20000;
+  unsigned long startMs = millis();
+  while (time(nullptr) < 1700000000 && (millis() - startMs) < NTP_TIMEOUT_MS) {
+    delay(200);
+  }
+  if (time(nullptr) < 1700000000) {
+    drawStatus("NTP FAIL", "CONTINUE");
+    delay(1200);
+  }
 
   fetchNextEvent();
   lastCalFetch = millis();
