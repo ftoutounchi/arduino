@@ -26,7 +26,7 @@ const char* GCAL_PATH =
 const char* TZ_INFO = "CET-1CEST,M3.5.0/2,M10.5.0/3";
 
 // ================= BOOT button =================
-// IMPORTANT: BOOT_PIN is ALREADY defined by ESP32 core for your board
+// BOOT_PIN is already defined by the ESP32 core for your board.
 const unsigned long BOOT_DEBOUNCE_MS = 250;
 unsigned long lastBootPressMs = 0;
 
@@ -36,8 +36,8 @@ time_t nextEnd   = 0;
 String nextTitle = "";
 
 // refresh control
-const unsigned long CAL_REFRESH_MS = 10UL * 60UL * 1000UL;
-const unsigned long AFTER_EVENT_REFETCH_COOLDOWN_MS = 15000;
+const unsigned long CAL_REFRESH_MS = 10UL * 60UL * 1000UL;          // calendar pull interval
+const unsigned long AFTER_EVENT_REFETCH_COOLDOWN_MS = 15000;        // after-event cooldown
 
 unsigned long lastCalFetch = 0;
 unsigned long lastAfterEventFetch = 0;
@@ -47,8 +47,9 @@ const unsigned long BLINK_MS = 600;
 bool showBigClock = true;
 unsigned long lastBlinkToggle = 0;
 
-// dismiss state
+// dismiss state: dismiss applies to a specific event (by its DTSTART)
 bool eventDismissed = false;
+time_t dismissedEventStart = 0;
 
 // ================= Helpers =================
 String hhmm(time_t t) {
@@ -59,13 +60,14 @@ String hhmm(time_t t) {
   return String(buf);
 }
 
-String trunc(const String& s, int len) {
+String truncStr(const String& s, int len) {
   return s.length() <= len ? s : s.substring(0, len);
 }
 
 // ================= Display =================
 void drawBigClock(const String& t) {
   u8g2.clearBuffer();
+  u8g2.setDrawColor(1);
   u8g2.setFont(u8g2_font_logisoso20_tf);
   u8g2.drawStr(0, 32, t.c_str());
   u8g2.sendBuffer();
@@ -73,10 +75,16 @@ void drawBigClock(const String& t) {
 
 void drawEventPage(const String& t, const String& title) {
   u8g2.clearBuffer();
+  u8g2.setDrawColor(1);
+
+  // Time (top)
   u8g2.setFont(u8g2_font_6x10_tr);
-  u8g2.drawStr(0, 14, t.c_str());
-  u8g2.setFont(u8g2_font_5x8_tr);
-  u8g2.drawStr(0, 32, trunc(title, 18).c_str());
+  u8g2.drawStr(0, 12, t.c_str());
+
+  // Title 
+  u8g2.setFont(u8g2_font_8x13_tr);
+  u8g2.drawStr(0, 36, truncStr(title, 9).c_str());
+
   u8g2.sendBuffer();
 }
 
@@ -120,6 +128,7 @@ bool fetchNextEvent() {
     GCAL_PATH, GCAL_HOST
   );
 
+  // Skip headers
   while (client.connected()) {
     if (client.readStringUntil('\n') == "\r") break;
   }
@@ -138,7 +147,7 @@ bool fetchNextEvent() {
     else if (l == "END:VEVENT") {
       time_t s, e;
       if (parseIcsDate(ds, s)) {
-        if (!parseIcsDate(de, e)) e = s + 3600;
+        if (!parseIcsDate(de, e)) e = s + 3600; // fallback 1h if DTEND missing
         if (s > now && (bestS == 0 || s < bestS)) {
           bestS = s; bestE = e; bestT = sum;
         }
@@ -153,30 +162,40 @@ bool fetchNextEvent() {
   client.stop();
   if (!bestS) return false;
 
+  // Update event
   nextStart = bestS;
   nextEnd   = bestE;
   nextTitle = bestT.length() ? bestT : "(no title)";
-  eventDismissed = false;
+
+  // IMPORTANT: pulling calendar must NOT reset dismiss unless the event changed
+  if (eventDismissed && dismissedEventStart != 0 && nextStart != dismissedEventStart) {
+    eventDismissed = false;
+    dismissedEventStart = 0;
+  }
+
   return true;
 }
 
 // ================= BOOT handling =================
 void handleBoot() {
   if (digitalRead(BOOT_PIN) == LOW) {
-    unsigned long now = millis();
-    if (now - lastBootPressMs > BOOT_DEBOUNCE_MS) {
-      lastBootPressMs = now;
+    unsigned long nowMs = millis();
+    if (nowMs - lastBootPressMs > BOOT_DEBOUNCE_MS) {
+      lastBootPressMs = nowMs;
 
-      // dismiss current event
+      // Dismiss THIS specific event (do not clear nextStart/nextEnd)
+      dismissedEventStart = nextStart;
       eventDismissed = true;
-      nextStart = nextEnd = 0;
-      nextTitle = "";
-      showBigClock = true;
 
-      if (now - lastAfterEventFetch > AFTER_EVENT_REFETCH_COOLDOWN_MS) {
+      // Immediately show time page
+      showBigClock = true;
+      lastBlinkToggle = nowMs;
+
+      // Optionally fetch next event soon (cooldown protected) - useful if event is long
+      if (nowMs - lastAfterEventFetch > AFTER_EVENT_REFETCH_COOLDOWN_MS) {
         fetchNextEvent();
-        lastAfterEventFetch = now;
-        lastCalFetch = now;
+        lastAfterEventFetch = nowMs;
+        lastCalFetch = nowMs; // reset periodic timer too
       }
     }
   }
@@ -209,39 +228,49 @@ void loop() {
   time_t now = time(nullptr);
   String nowStr = hhmm(now);
 
+  // Periodic calendar refresh
   if (millis() - lastCalFetch > CAL_REFRESH_MS) {
     fetchNextEvent();
     lastCalFetch = millis();
   }
 
+  // Auto-release when event ends: fetch the next event
   if (nextEnd > 0 && now > nextEnd) {
     if (millis() - lastAfterEventFetch > AFTER_EVENT_REFETCH_COOLDOWN_MS) {
       fetchNextEvent();
       lastAfterEventFetch = millis();
+
+      // event ended -> any previous dismiss is no longer relevant
+      eventDismissed = false;
+      dismissedEventStart = 0;
+
+      showBigClock = true;
+      lastBlinkToggle = millis();
     }
   }
 
+  // Event is active only if NOT dismissed and within the time window
   bool eventActive =
     !eventDismissed &&
     nextStart > 0 &&
     now >= nextStart &&
     now <= nextEnd;
 
+  // Default page: BIG TIME only
   if (!eventActive) {
     drawBigClock(nowStr);
     delay(150);
     return;
   }
 
+  // When event is active: blink between big time page and event page
   if (millis() - lastBlinkToggle > BLINK_MS) {
     showBigClock = !showBigClock;
     lastBlinkToggle = millis();
   }
 
-  if (showBigClock)
-    drawBigClock(nowStr);
-  else
-    drawEventPage(nowStr, nextTitle);
+  if (showBigClock) drawBigClock(nowStr);
+  else drawEventPage(nowStr, nextTitle);
 
   delay(80);
 }
