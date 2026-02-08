@@ -211,9 +211,8 @@ void setup() {
   WiFi.begin(ssid, password);
   while (WiFi.status() != WL_CONNECTED) delay(300);
 
-  setenv("TZ", TZ_INFO, 1);
-  tzset();
-  configTime(0, 0, "pool.ntp.org", "time.nist.gov");
+  // Configure SNTP with local timezone (handles CET/CEST automatically)
+  configTzTime(TZ_INFO, "pool.ntp.org", "time.nist.gov");
 
   while (time(nullptr) < 1700000000) delay(200);
 
