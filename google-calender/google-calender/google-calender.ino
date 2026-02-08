@@ -77,13 +77,46 @@ void drawEventPage(const String& t, const String& title) {
   u8g2.clearBuffer();
   u8g2.setDrawColor(1);
 
-  // Time (top)
-  u8g2.setFont(u8g2_font_6x10_tr);
-  u8g2.drawStr(0, 12, t.c_str());
+  // Title only, as large as possible
+  String msg = title.length() ? title : "(no title)";
+  msg.trim();
+  if (!msg.length()) msg = "(no title)";
 
-  // Title 
-  u8g2.setFont(u8g2_font_8x13_tr);
-  u8g2.drawStr(0, 36, truncStr(title, 9).c_str());
+  const int16_t W = 72;
+  const int16_t H = 40;
+
+  if (msg.length() <= 4) {
+    u8g2.setFont(u8g2_font_logisoso20_tf);
+    int16_t x = (W - u8g2.getStrWidth(msg.c_str())) / 2;
+    int16_t y = 30; // baseline
+    u8g2.drawStr(x < 0 ? 0 : x, y, msg.c_str());
+  } else if (msg.length() <= 7) {
+    u8g2.setFont(u8g2_font_logisoso16_tf);
+    int16_t x = (W - u8g2.getStrWidth(msg.c_str())) / 2;
+    int16_t y = 28; // baseline
+    u8g2.drawStr(x < 0 ? 0 : x, y, msg.c_str());
+  } else {
+    // Small font, try 2 lines
+    u8g2.setFont(u8g2_font_8x13_tr);
+    String l1 = msg;
+    String l2 = "";
+    const int maxLen = 9; // fits 72px width in 8x13
+    if (msg.length() > maxLen) {
+      int split = msg.lastIndexOf(' ', maxLen);
+      if (split < 0) split = maxLen;
+      l1 = msg.substring(0, split);
+      l2 = msg.substring(split);
+      l2.trim();
+    }
+    int16_t x1 = (W - u8g2.getStrWidth(l1.c_str())) / 2;
+    int16_t y1 = l2.length() ? 18 : 26;
+    u8g2.drawStr(x1 < 0 ? 0 : x1, y1, l1.c_str());
+    if (l2.length()) {
+      int16_t x2 = (W - u8g2.getStrWidth(l2.c_str())) / 2;
+      int16_t y2 = 34;
+      u8g2.drawStr(x2 < 0 ? 0 : x2, y2, l2.c_str());
+    }
+  }
 
   u8g2.sendBuffer();
 }
