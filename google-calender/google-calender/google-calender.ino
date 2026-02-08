@@ -36,6 +36,14 @@ time_t nextEnd   = 0;
 String nextTitle = "";
 portMUX_TYPE calMux = portMUX_INITIALIZER_UNLOCKED;
 
+// active events stack (boot-time snapshot)
+const int MAX_ACTIVE = 4;
+time_t activeStart[MAX_ACTIVE];
+time_t activeEnd[MAX_ACTIVE];
+String activeTitle[MAX_ACTIVE];
+int activeCount = 0;
+int activeIndex = 0;
+
 // blink control
 const unsigned long BLINK_MS = 600;
 bool showBigClock = true;
@@ -179,9 +187,10 @@ bool fetchNextEvent() {
   String ds, de, sum;
   time_t bestS = 0, bestE = 0;
   String bestT;
-  bool foundActive = false;
-  time_t activeS = 0, activeE = 0;
-  String activeT;
+  time_t actS[MAX_ACTIVE];
+  time_t actE[MAX_ACTIVE];
+  String actT[MAX_ACTIVE];
+  int actCount = 0;
 
   while (client.available()) {
     String l = client.readStringUntil('\n');
@@ -193,12 +202,19 @@ bool fetchNextEvent() {
       if (parseIcsDate(ds, s)) {
         if (!parseIcsDate(de, e)) e = s + 3600; // fallback 1h if DTEND missing
         if (now >= s && now <= e) {
-          // Choose the active event that ends soonest
-          if (!foundActive || e < activeE) {
-            foundActive = true;
-            activeS = s;
-            activeE = e;
-            activeT = sum;
+          // Insert by start time (ascending), keep only MAX_ACTIVE
+          if (actCount < MAX_ACTIVE) {
+            int pos = actCount;
+            while (pos > 0 && s < actS[pos - 1]) {
+              actS[pos] = actS[pos - 1];
+              actE[pos] = actE[pos - 1];
+              actT[pos] = actT[pos - 1];
+              pos--;
+            }
+            actS[pos] = s;
+            actE[pos] = e;
+            actT[pos] = sum;
+            actCount++;
           }
         } else if (s > now && (bestS == 0 || s < bestS)) {
           bestS = s; bestE = e; bestT = sum;
@@ -212,14 +228,21 @@ bool fetchNextEvent() {
   }
 
   client.stop();
-  if (!foundActive && !bestS) return false;
+  if (actCount == 0 && !bestS) return false;
 
   // Update event atomically
   portENTER_CRITICAL(&calMux);
-  if (foundActive) {
-    nextStart = activeS;
-    nextEnd   = activeE;
-    nextTitle = activeT.length() ? activeT : "(no title)";
+  activeCount = actCount;
+  activeIndex = 0;
+  for (int i = 0; i < actCount; ++i) {
+    activeStart[i] = actS[i];
+    activeEnd[i] = actE[i];
+    activeTitle[i] = actT[i].length() ? actT[i] : "(no title)";
+  }
+  if (actCount > 0) {
+    nextStart = activeStart[0];
+    nextEnd   = activeEnd[0];
+    nextTitle = activeTitle[0];
   } else {
     nextStart = bestS;
     nextEnd   = bestE;
@@ -243,9 +266,23 @@ void handleBoot() {
     if (nowMs - lastBootPressMs > BOOT_DEBOUNCE_MS) {
       lastBootPressMs = nowMs;
 
-      // Dismiss THIS specific event (do not clear nextStart/nextEnd)
+      // Dismiss current active event (move to next)
+      portENTER_CRITICAL(&calMux);
+      if (activeIndex < activeCount) {
+        activeIndex++;
+        if (activeIndex < activeCount) {
+          nextStart = activeStart[activeIndex];
+          nextEnd   = activeEnd[activeIndex];
+          nextTitle = activeTitle[activeIndex];
+          eventDismissed = false;
+        } else {
+          eventDismissed = true;
+        }
+      } else {
+        eventDismissed = true;
+      }
       dismissedEventStart = nextStart;
-      eventDismissed = true;
+      portEXIT_CRITICAL(&calMux);
 
       // Immediately show time page
       showBigClock = true;
@@ -293,12 +330,45 @@ void loop() {
   time_t ns = 0, ne = 0;
   bool dismissed = false;
   String title;
+  int aCount = 0, aIndex = 0;
+  time_t aStart[MAX_ACTIVE];
+  time_t aEnd[MAX_ACTIVE];
+  String aTitle[MAX_ACTIVE];
   portENTER_CRITICAL(&calMux);
   ns = nextStart;
   ne = nextEnd;
   title = nextTitle;
   dismissed = eventDismissed;
+  aCount = activeCount;
+  aIndex = activeIndex;
+  for (int i = 0; i < aCount; ++i) {
+    aStart[i] = activeStart[i];
+    aEnd[i] = activeEnd[i];
+    aTitle[i] = activeTitle[i];
+  }
   portEXIT_CRITICAL(&calMux);
+
+  // Skip expired active events
+  while (aIndex < aCount && now > aEnd[aIndex]) {
+    aIndex++;
+  }
+  if (aIndex != activeIndex) {
+    portENTER_CRITICAL(&calMux);
+    activeIndex = aIndex;
+    if (activeIndex < activeCount) {
+      nextStart = activeStart[activeIndex];
+      nextEnd   = activeEnd[activeIndex];
+      nextTitle = activeTitle[activeIndex];
+      eventDismissed = false;
+    } else {
+      eventDismissed = true;
+    }
+    portEXIT_CRITICAL(&calMux);
+    ns = (activeIndex < aCount) ? aStart[activeIndex] : ns;
+    ne = (activeIndex < aCount) ? aEnd[activeIndex] : ne;
+    title = (activeIndex < aCount) ? aTitle[activeIndex] : title;
+    dismissed = eventDismissed;
+  }
 
   // Auto-release when event ends (no auto-refresh)
   if (ne > 0 && now > ne) {
