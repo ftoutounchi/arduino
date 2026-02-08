@@ -22,8 +22,8 @@ const char* GCAL_HOST = "calendar.google.com";
 const char* GCAL_PATH =
   "/calendar/ical/27a537210e405162f136cb0f7d8d66d0a132005c7eafb3ece5b77de3d48ea3b2%40group.calendar.google.com/public/basic.ics";
 
-// ================= Timezone =================
-const char* TZ_INFO = "CET-1CEST,M3.5.0/2,M10.5.0/3";
+// ================= Timezone (Europe/Berlin) =================
+const char* TZ_INFO = "CET-1CEST,M3.5.0/2,M10.5.0/3"; // Europe/Berlin
 
 // ================= BOOT button =================
 // BOOT_PIN is already defined by the ESP32 core for your board.
