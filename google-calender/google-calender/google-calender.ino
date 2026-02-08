@@ -34,6 +34,7 @@ unsigned long lastBootPressMs = 0;
 time_t nextStart = 0;
 time_t nextEnd   = 0;
 String nextTitle = "";
+portMUX_TYPE calMux = portMUX_INITIALIZER_UNLOCKED;
 
 // refresh control
 const unsigned long CAL_REFRESH_MS = 1UL * 60UL * 1000UL;          // calendar pull interval
@@ -41,6 +42,11 @@ const unsigned long AFTER_EVENT_REFETCH_COOLDOWN_MS = 15000;        // after-eve
 
 unsigned long lastCalFetch = 0;
 unsigned long lastAfterEventFetch = 0;
+
+// async fetch control
+volatile bool calFetchRequested = false;
+volatile bool calFetchInProgress = false;
+TaskHandle_t calTaskHandle = nullptr;
 
 // blink control
 const unsigned long BLINK_MS = 600;
@@ -130,6 +136,25 @@ void drawStatus(const String& l1, const String& l2 = "") {
   u8g2.sendBuffer();
 }
 
+bool fetchNextEvent();
+
+void requestCalFetch() {
+  if (!calFetchInProgress) calFetchRequested = true;
+}
+
+void calendarTask(void* pv) {
+  (void)pv;
+  for (;;) {
+    if (calFetchRequested && !calFetchInProgress) {
+      calFetchRequested = false;
+      calFetchInProgress = true;
+      fetchNextEvent();
+      calFetchInProgress = false;
+    }
+    vTaskDelay(50 / portTICK_PERIOD_MS);
+  }
+}
+
 // ================= timegm replacement =================
 time_t timegm_portable(struct tm* tm) {
   String oldTZ = getenv("TZ") ? getenv("TZ") : "";
@@ -207,7 +232,8 @@ bool fetchNextEvent() {
   client.stop();
   if (!bestS) return false;
 
-  // Update event
+  // Update event atomically
+  portENTER_CRITICAL(&calMux);
   nextStart = bestS;
   nextEnd   = bestE;
   nextTitle = bestT.length() ? bestT : "(no title)";
@@ -217,6 +243,7 @@ bool fetchNextEvent() {
     eventDismissed = false;
     dismissedEventStart = 0;
   }
+  portEXIT_CRITICAL(&calMux);
 
   return true;
 }
@@ -238,7 +265,7 @@ void handleBoot() {
 
       // Optionally fetch next event soon (cooldown protected) - useful if event is long
       if (nowMs - lastAfterEventFetch > AFTER_EVENT_REFETCH_COOLDOWN_MS) {
-        fetchNextEvent();
+        requestCalFetch();
         lastAfterEventFetch = nowMs;
         lastCalFetch = nowMs; // reset periodic timer too
       }
@@ -272,7 +299,8 @@ void setup() {
     delay(1200);
   }
 
-  fetchNextEvent();
+  xTaskCreate(calendarTask, "calTask", 4096, nullptr, 1, &calTaskHandle);
+  requestCalFetch();
   lastCalFetch = millis();
 }
 
@@ -283,21 +311,33 @@ void loop() {
   time_t now = time(nullptr);
   String nowStr = hhmm(now);
 
+  time_t ns = 0, ne = 0;
+  bool dismissed = false;
+  String title;
+  portENTER_CRITICAL(&calMux);
+  ns = nextStart;
+  ne = nextEnd;
+  title = nextTitle;
+  dismissed = eventDismissed;
+  portEXIT_CRITICAL(&calMux);
+
   // Periodic calendar refresh
   if (millis() - lastCalFetch > CAL_REFRESH_MS) {
-    fetchNextEvent();
+    requestCalFetch();
     lastCalFetch = millis();
   }
 
   // Auto-release when event ends: fetch the next event
-  if (nextEnd > 0 && now > nextEnd) {
+  if (ne > 0 && now > ne) {
     if (millis() - lastAfterEventFetch > AFTER_EVENT_REFETCH_COOLDOWN_MS) {
-      fetchNextEvent();
+      requestCalFetch();
       lastAfterEventFetch = millis();
 
       // event ended -> any previous dismiss is no longer relevant
+      portENTER_CRITICAL(&calMux);
       eventDismissed = false;
       dismissedEventStart = 0;
+      portEXIT_CRITICAL(&calMux);
 
       showBigClock = true;
       lastBlinkToggle = millis();
@@ -306,10 +346,10 @@ void loop() {
 
   // Event is active only if NOT dismissed and within the time window
   bool eventActive =
-    !eventDismissed &&
-    nextStart > 0 &&
-    now >= nextStart &&
-    now <= nextEnd;
+    !dismissed &&
+    ns > 0 &&
+    now >= ns &&
+    now <= ne;
 
   // Default page: BIG TIME only
   if (!eventActive) {
@@ -325,7 +365,7 @@ void loop() {
   }
 
   if (showBigClock) drawBigClock(nowStr);
-  else drawEventPage(nowStr, nextTitle);
+  else drawEventPage(nowStr, title);
 
   delay(80);
 }
