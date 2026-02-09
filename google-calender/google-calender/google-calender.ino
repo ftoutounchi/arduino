@@ -265,12 +265,21 @@ void handleBoot() {
     unsigned long nowMs = millis();
     if (nowMs - lastBootPressMs > BOOT_DEBOUNCE_MS) {
       lastBootPressMs = nowMs;
+      time_t now = time(nullptr);
 
       // Dismiss current active event (move to next)
       portENTER_CRITICAL(&calMux);
+      time_t dismissedStart = nextStart;
       if (activeIndex < activeCount) {
-        activeIndex++;
-        if (activeIndex < activeCount) {
+        int nextIdx = -1;
+        for (int i = 0; i < activeCount; ++i) {
+          if (now >= activeStart[i] && now <= activeEnd[i] && activeStart[i] > dismissedStart) {
+            nextIdx = i;
+            break;
+          }
+        }
+        if (nextIdx >= 0) {
+          activeIndex = nextIdx;
           nextStart = activeStart[activeIndex];
           nextEnd   = activeEnd[activeIndex];
           nextTitle = activeTitle[activeIndex];
@@ -281,7 +290,7 @@ void handleBoot() {
       } else {
         eventDismissed = true;
       }
-      dismissedEventStart = nextStart;
+      dismissedEventStart = dismissedStart;
       portEXIT_CRITICAL(&calMux);
 
       // Immediately show time page
@@ -329,6 +338,7 @@ void loop() {
 
   time_t ns = 0, ne = 0;
   bool dismissed = false;
+  time_t dismissedStart = 0;
   String title;
   int aCount = 0, aIndex = 0;
   time_t aStart[MAX_ACTIVE];
@@ -339,6 +349,7 @@ void loop() {
   ne = nextEnd;
   title = nextTitle;
   dismissed = eventDismissed;
+  dismissedStart = dismissedEventStart;
   aCount = activeCount;
   aIndex = activeIndex;
   for (int i = 0; i < aCount; ++i) {
@@ -348,26 +359,33 @@ void loop() {
   }
   portEXIT_CRITICAL(&calMux);
 
-  // Skip expired active events
-  while (aIndex < aCount && now > aEnd[aIndex]) {
-    aIndex++;
-  }
-  if (aIndex != activeIndex) {
-    portENTER_CRITICAL(&calMux);
-    activeIndex = aIndex;
-    if (activeIndex < activeCount) {
+  // If not dismissed, select the earliest active event after dismissedStart (if any)
+  if (!dismissed) {
+    int desired = -1;
+    for (int i = 0; i < aCount; ++i) {
+      if (now >= aStart[i] && now <= aEnd[i]) {
+        if (dismissedStart == 0 || aStart[i] > dismissedStart) {
+          desired = i;
+          break;
+        }
+      }
+    }
+    if (desired >= 0 && desired != activeIndex) {
+      portENTER_CRITICAL(&calMux);
+      activeIndex = desired;
       nextStart = activeStart[activeIndex];
       nextEnd   = activeEnd[activeIndex];
       nextTitle = activeTitle[activeIndex];
-      eventDismissed = false;
-    } else {
+      portEXIT_CRITICAL(&calMux);
+      ns = aStart[activeIndex];
+      ne = aEnd[activeIndex];
+      title = aTitle[activeIndex];
+    } else if (desired < 0 && dismissedStart != 0) {
+      portENTER_CRITICAL(&calMux);
       eventDismissed = true;
+      portEXIT_CRITICAL(&calMux);
+      dismissed = true;
     }
-    portEXIT_CRITICAL(&calMux);
-    ns = (activeIndex < aCount) ? aStart[activeIndex] : ns;
-    ne = (activeIndex < aCount) ? aEnd[activeIndex] : ne;
-    title = (activeIndex < aCount) ? aTitle[activeIndex] : title;
-    dismissed = eventDismissed;
   }
 
   // Auto-release when event ends (no auto-refresh)
