@@ -36,6 +36,10 @@ time_t nextEnd   = 0;
 String nextTitle = "";
 portMUX_TYPE calMux = portMUX_INITIALIZER_UNLOCKED;
 
+// calendar polling task
+const uint32_t CAL_POLL_MS = 60UL * 60UL * 1000UL; // every hour
+TaskHandle_t calTaskHandle = nullptr;
+
 // active events stack (boot-time snapshot)
 const int MAX_ACTIVE = 4;
 time_t activeStart[MAX_ACTIVE];
@@ -133,6 +137,7 @@ void drawStatus(const String& l1, const String& l2 = "") {
 }
 
 bool fetchNextEvent();
+void calendarTask(void* param);
 
 // ================= timegm replacement =================
 time_t timegm_portable(struct tm* tm) {
@@ -259,6 +264,19 @@ bool fetchNextEvent() {
   return true;
 }
 
+// ================= Calendar Task =================
+void calendarTask(void* param) {
+  (void)param;
+  for (;;) {
+    vTaskDelay(pdMS_TO_TICKS(CAL_POLL_MS));
+    if (WiFi.status() == WL_CONNECTED) {
+      fetchNextEvent();
+    } else {
+      WiFi.reconnect();
+    }
+  }
+}
+
 // ================= BOOT handling =================
 void handleBoot() {
   if (digitalRead(BOOT_PIN) == LOW) {
@@ -318,6 +336,17 @@ void setup() {
   }
 
   fetchNextEvent(); // pull calendar only at boot
+
+  // Start background calendar polling task (async)
+  xTaskCreatePinnedToCore(
+    calendarTask,
+    "calendarTask",
+    4096,
+    nullptr,
+    1,
+    &calTaskHandle,
+    1
+  );
 }
 
 // ================= Loop =================
