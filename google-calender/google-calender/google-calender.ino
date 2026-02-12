@@ -269,23 +269,25 @@ void handleBoot() {
     unsigned long nowMs = millis();
     if (nowMs - lastBootPressMs > BOOT_DEBOUNCE_MS) {
       lastBootPressMs = nowMs;
+      time_t now = time(nullptr);
 
       // Dismiss current active event (move to next)
-  portENTER_CRITICAL(&calMux);
-  if (activeIndex < eventCount) {
-    activeIndex++;
-    if (activeIndex < eventCount) {
-      eventDismissed = false;
-    } else {
-      eventDismissed = true;
-    }
-  } else {
-    eventDismissed = true;
-  }
-  if (activeIndex > 0 && activeIndex - 1 < eventCount) {
-    dismissedEventStart = events[activeIndex - 1].start;
-  }
-  portEXIT_CRITICAL(&calMux);
+      portENTER_CRITICAL(&calMux);
+      if (activeIndex < activeCount) {
+        activeIndex++;
+        if (activeIndex < activeCount) {
+          nextStart = activeStart[activeIndex];
+          nextEnd   = activeEnd[activeIndex];
+          nextTitle = activeTitle[activeIndex];
+          eventDismissed = false;
+        } else {
+          eventDismissed = true;
+        }
+      } else {
+        eventDismissed = true;
+      }
+      dismissedEventStart = nextStart;
+      portEXIT_CRITICAL(&calMux);
 
       // Immediately show time page
       showBigClock = true;
@@ -343,26 +345,36 @@ void loop() {
 
   time_t ns = 0, ne = 0;
   bool dismissed = false;
+  time_t dismissedStart = 0;
   String title;
   int aCount = 0, aIndex = 0;
   CalEvent localEvents[MAX_EVENTS];
   portENTER_CRITICAL(&calMux);
   dismissed = eventDismissed;
-  aCount = eventCount;
+  aCount = activeCount;
   aIndex = activeIndex;
   for (int i = 0; i < aCount; ++i) localEvents[i] = events[i];
   portEXIT_CRITICAL(&calMux);
 
-  // Skip expired events
-  while (aIndex < aCount && now > localEvents[aIndex].end) {
+  // Skip expired active events
+  while (aIndex < aCount && now > aEnd[aIndex]) {
     aIndex++;
   }
   if (aIndex != activeIndex) {
     portENTER_CRITICAL(&calMux);
     activeIndex = aIndex;
-    if (activeIndex < eventCount) eventDismissed = false;
-    else eventDismissed = true;
+    if (activeIndex < activeCount) {
+      nextStart = activeStart[activeIndex];
+      nextEnd   = activeEnd[activeIndex];
+      nextTitle = activeTitle[activeIndex];
+      eventDismissed = false;
+    } else {
+      eventDismissed = true;
+    }
     portEXIT_CRITICAL(&calMux);
+    ns = (activeIndex < aCount) ? aStart[activeIndex] : ns;
+    ne = (activeIndex < aCount) ? aEnd[activeIndex] : ne;
+    title = (activeIndex < aCount) ? aTitle[activeIndex] : title;
     dismissed = eventDismissed;
   }
 
