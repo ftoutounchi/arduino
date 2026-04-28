@@ -21,7 +21,7 @@ static constexpr uint16_t SOUND_P2P_THRESHOLD = 30;
 static constexpr float SOUND_RMS_THRESHOLD = 8.0f;
 static constexpr uint32_t SAMPLE_WINDOW_MS = 50;
 static constexpr uint32_t SAMPLE_INTERVAL_US = 125; // about 8 kHz
-static constexpr uint32_t LED_HOLD_MS = 250;
+static constexpr uint32_t LED_OFF_HOLD_MS = 250;
 static constexpr uint32_t PRINT_INTERVAL_MS = 250;
 
 struct SoundReading {
@@ -121,11 +121,11 @@ void setup() {
 #if !USE_NEOPIXEL_LED
   pinMode(LED_PIN, OUTPUT);
 #endif
-  setLed(false);
+  setLed(true);
 
   Serial.println();
   Serial.println("ESP32-S3 piezo sound detector");
-  Serial.println("LED turns on when piezo movement is detected.");
+  Serial.println("LED stays on when quiet and turns off when sound is detected.");
 }
 
 void loop() {
@@ -135,9 +135,9 @@ void loop() {
 
   if (detected) {
     lastSoundMs = now;
-    setLed(true);
-  } else if ((now - lastSoundMs) > LED_HOLD_MS) {
     setLed(false);
+  } else if ((now - lastSoundMs) > LED_OFF_HOLD_MS) {
+    setLed(true);
   }
 
   if ((now - lastPrintMs) >= PRINT_INTERVAL_MS) {
