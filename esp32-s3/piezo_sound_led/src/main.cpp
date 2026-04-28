@@ -21,8 +21,8 @@
 // then replace this number so the dB estimate matches your hardware.
 static constexpr float RMS_AT_70_DB = 120.0f;
 
-static constexpr float LED_ON_DB = 70.0f;
-static constexpr float LED_OFF_DB = 67.0f;
+static constexpr float LED_ON_DB = 10.0f;
+static constexpr float LED_OFF_DB = 7.0f;
 static constexpr uint32_t SAMPLE_WINDOW_MS = 50;
 static constexpr uint32_t SAMPLE_INTERVAL_US = 125; // about 8 kHz
 static constexpr uint32_t LED_HOLD_MS = 400;

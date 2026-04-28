@@ -45,8 +45,8 @@ build_flags =
 
 The LED uses hysteresis:
 
-- On at `70 dB`
-- Off below `67 dB`
+- On at `10 dB`
+- Off below `7 dB`
 
 This prevents rapid flickering around the threshold.
 
