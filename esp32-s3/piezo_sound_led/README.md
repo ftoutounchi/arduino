@@ -42,7 +42,7 @@ Open the serial monitor and watch the printed `p2p=` and `rms=` values.
 - If the LED never turns off, lower `SOUND_P2P_THRESHOLD` or `SOUND_RMS_THRESHOLD` in `src/main.cpp`.
 - If the LED stays off all the time, raise those values.
 
-Default detection thresholds are `p2p >= 30` or `rms >= 8.0`.
+Default detection thresholds are `p2p >= 10` or `rms >= 2.7`.
 The LED stays off for `2000 ms` after the last detected sound.
 
 ## Commands

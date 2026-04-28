@@ -17,8 +17,8 @@
 #define USE_NEOPIXEL_LED 1
 #endif
 
-static constexpr uint16_t SOUND_P2P_THRESHOLD = 30;
-static constexpr float SOUND_RMS_THRESHOLD = 8.0f;
+static constexpr uint16_t SOUND_P2P_THRESHOLD = 10;
+static constexpr float SOUND_RMS_THRESHOLD = 2.7f;
 static constexpr uint32_t SAMPLE_WINDOW_MS = 50;
 static constexpr uint32_t SAMPLE_INTERVAL_US = 125; // about 8 kHz
 static constexpr uint32_t LED_OFF_HOLD_MS = 2000;
