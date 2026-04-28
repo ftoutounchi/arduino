@@ -6,7 +6,7 @@
 #endif
 
 #ifndef LED_PIN
-#define LED_PIN 48
+#define LED_PIN 21
 #endif
 
 #ifndef LED_ACTIVE_HIGH
@@ -39,7 +39,7 @@ void setLed(bool on) {
   ledOn = on;
 
 #if USE_NEOPIXEL_LED
-  // ESP32-S3-DevKitC-1 uses an addressable onboard RGB LED on GPIO48.
+  // Waveshare ESP32-S3-Zero uses an addressable onboard RGB LED on GPIO21.
   neopixelWrite(LED_PIN, on ? 0 : 0, on ? 30 : 0, on ? 0 : 0);
 #else
   digitalWrite(LED_PIN, (on == (LED_ACTIVE_HIGH != 0)) ? HIGH : LOW);
