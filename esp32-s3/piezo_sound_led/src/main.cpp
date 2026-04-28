@@ -6,7 +6,7 @@
 #endif
 
 #ifndef LED_PIN
-#define LED_PIN 2
+#define LED_PIN 48
 #endif
 
 #ifndef LED_ACTIVE_HIGH
@@ -14,7 +14,7 @@
 #endif
 
 #ifndef USE_NEOPIXEL_LED
-#define USE_NEOPIXEL_LED 0
+#define USE_NEOPIXEL_LED 1
 #endif
 
 // Put a known ~70 dB sound near the piezo, read the printed RMS value,
@@ -43,7 +43,7 @@ void setLed(bool on) {
   ledOn = on;
 
 #if USE_NEOPIXEL_LED
-  // ESP32-S3-DevKitC-1 often has an addressable RGB LED on GPIO48.
+  // ESP32-S3-DevKitC-1 uses an addressable onboard RGB LED on GPIO48.
   neopixelWrite(LED_PIN, on ? 0 : 0, on ? 30 : 0, on ? 0 : 0);
 #else
   digitalWrite(LED_PIN, (on == (LED_ACTIVE_HIGH != 0)) ? HIGH : LOW);

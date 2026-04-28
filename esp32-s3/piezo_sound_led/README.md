@@ -7,7 +7,7 @@ Important: a bare piezo disc does not measure true dB SPL by itself. The code pr
 ## Default Pins
 
 - Piezo analog signal: `GPIO1`
-- External LED: `GPIO2` through a resistor
+- Onboard RGB LED: `GPIO48`
 - USB serial monitor: `115200`
 
 Change pins in `platformio.ini`:
@@ -15,16 +15,17 @@ Change pins in `platformio.ini`:
 ```ini
 build_flags =
   -DPIEZO_PIN=1
-  -DLED_PIN=2
+  -DLED_PIN=48
+  -DUSE_NEOPIXEL_LED=1
 ```
 
-For an ESP32-S3-DevKitC-1 addressable onboard RGB LED, try:
+For a normal external LED instead:
 
 ```ini
 build_flags =
   -DPIEZO_PIN=1
-  -DLED_PIN=48
-  -DUSE_NEOPIXEL_LED=1
+  -DLED_PIN=2
+  -DUSE_NEOPIXEL_LED=0
 ```
 
 ## Wiring Notes
@@ -56,4 +57,3 @@ This prevents rapid flickering around the threshold.
 ~/.platformio/penv/bin/pio run -t upload
 ~/.platformio/penv/bin/pio device monitor -b 115200
 ```
-
