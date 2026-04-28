@@ -1,6 +1,6 @@
 # ESP32-S3 Piezo Sound LED
 
-This PlatformIO project samples a piezo sensor on an ESP32-S3 analog input. The onboard LED stays on while quiet and turns off when sound or vibration is detected.
+This PlatformIO project samples a piezo sensor on an ESP32-S3 analog input. The onboard LED stays on while quiet and turns off for 2 seconds when sound or vibration is detected.
 
 Important: a bare piezo disc does not measure true dB SPL by itself. This test firmware detects raw movement from the piezo instead of trying to calculate real dB.
 
@@ -43,6 +43,7 @@ Open the serial monitor and watch the printed `p2p=` and `rms=` values.
 - If the LED stays off all the time, raise those values.
 
 Default detection thresholds are `p2p >= 30` or `rms >= 8.0`.
+The LED stays off for `2000 ms` after the last detected sound.
 
 ## Commands
 
