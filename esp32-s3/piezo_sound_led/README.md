@@ -1,8 +1,8 @@
 # ESP32-S3 Piezo Sound LED
 
-This PlatformIO project samples a piezo sensor on an ESP32-S3 analog input and turns an LED on when the estimated sound level reaches about 70 dB.
+This PlatformIO project samples a piezo sensor on an ESP32-S3 analog input and turns the onboard LED on when sound or vibration is detected.
 
-Important: a bare piezo disc does not measure true dB SPL by itself. The code prints the sensor RMS value so you can calibrate the value that corresponds to your target level.
+Important: a bare piezo disc does not measure true dB SPL by itself. This test firmware detects raw movement from the piezo instead of trying to calculate real dB.
 
 ## Default Pins
 
@@ -35,20 +35,14 @@ build_flags =
 - Add protection such as a series resistor and clamp diodes if the piezo can be hit or bent hard.
 - Connect all grounds together.
 
-## Calibration
+## Sensitivity
 
-1. Upload the project.
-2. Open the serial monitor.
-3. Play or produce a known 70 dB sound at the sensor position.
-4. Watch the printed `rms=` value.
-5. Replace `RMS_AT_70_DB` in `src/main.cpp` with that value.
+Open the serial monitor and watch the printed `p2p=` and `rms=` values.
 
-The LED uses hysteresis:
+- If the LED never turns on, lower `SOUND_P2P_THRESHOLD` or `SOUND_RMS_THRESHOLD` in `src/main.cpp`.
+- If the LED stays on all the time, raise those values.
 
-- On at `10 dB`
-- Off below `7 dB`
-
-This prevents rapid flickering around the threshold.
+Default detection thresholds are `p2p >= 30` or `rms >= 8.0`.
 
 ## Commands
 

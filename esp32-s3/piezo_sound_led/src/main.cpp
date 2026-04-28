@@ -17,15 +17,11 @@
 #define USE_NEOPIXEL_LED 1
 #endif
 
-// Put a known ~70 dB sound near the piezo, read the printed RMS value,
-// then replace this number so the dB estimate matches your hardware.
-static constexpr float RMS_AT_70_DB = 120.0f;
-
-static constexpr float LED_ON_DB = 10.0f;
-static constexpr float LED_OFF_DB = 7.0f;
+static constexpr uint16_t SOUND_P2P_THRESHOLD = 30;
+static constexpr float SOUND_RMS_THRESHOLD = 8.0f;
 static constexpr uint32_t SAMPLE_WINDOW_MS = 50;
 static constexpr uint32_t SAMPLE_INTERVAL_US = 125; // about 8 kHz
-static constexpr uint32_t LED_HOLD_MS = 400;
+static constexpr uint32_t LED_HOLD_MS = 250;
 static constexpr uint32_t PRINT_INTERVAL_MS = 250;
 
 struct SoundReading {
@@ -36,7 +32,7 @@ struct SoundReading {
 };
 
 bool ledOn = false;
-uint32_t lastAboveThresholdMs = 0;
+uint32_t lastSoundMs = 0;
 uint32_t lastPrintMs = 0;
 
 void setLed(bool on) {
@@ -91,22 +87,26 @@ SoundReading readSoundWindow() {
   return reading;
 }
 
-float estimateDb(const SoundReading &reading) {
-  const float rms = max(reading.rmsCounts, 1.0f);
-  return 70.0f + (20.0f * log10f(rms / RMS_AT_70_DB));
+uint16_t peakToPeak(const SoundReading &reading) {
+  return reading.maxRaw - reading.minRaw;
 }
 
-void printReading(const SoundReading &reading, float db) {
+bool soundDetected(const SoundReading &reading) {
+  return peakToPeak(reading) >= SOUND_P2P_THRESHOLD ||
+         reading.rmsCounts >= SOUND_RMS_THRESHOLD;
+}
+
+void printReading(const SoundReading &reading, bool detected) {
   Serial.print("raw min=");
   Serial.print(reading.minRaw);
   Serial.print(" max=");
   Serial.print(reading.maxRaw);
   Serial.print(" p2p=");
-  Serial.print(reading.maxRaw - reading.minRaw);
+  Serial.print(peakToPeak(reading));
   Serial.print(" rms=");
   Serial.print(reading.rmsCounts, 1);
-  Serial.print(" estimated_db=");
-  Serial.print(db, 1);
+  Serial.print(" sound=");
+  Serial.print(detected ? "yes" : "no");
   Serial.print(" led=");
   Serial.println(ledOn ? "on" : "off");
 }
@@ -124,24 +124,24 @@ void setup() {
   setLed(false);
 
   Serial.println();
-  Serial.println("ESP32-S3 piezo sound threshold");
-  Serial.println("Calibrate RMS_AT_70_DB for real dB behavior.");
+  Serial.println("ESP32-S3 piezo sound detector");
+  Serial.println("LED turns on when piezo movement is detected.");
 }
 
 void loop() {
   const SoundReading reading = readSoundWindow();
-  const float db = estimateDb(reading);
+  const bool detected = soundDetected(reading);
   const uint32_t now = millis();
 
-  if (db >= LED_ON_DB) {
-    lastAboveThresholdMs = now;
+  if (detected) {
+    lastSoundMs = now;
     setLed(true);
-  } else if (db <= LED_OFF_DB && (now - lastAboveThresholdMs) > LED_HOLD_MS) {
+  } else if ((now - lastSoundMs) > LED_HOLD_MS) {
     setLed(false);
   }
 
   if ((now - lastPrintMs) >= PRINT_INTERVAL_MS) {
     lastPrintMs = now;
-    printReading(reading, db);
+    printReading(reading, detected);
   }
 }
