@@ -21,6 +21,11 @@ Adafruit_NeoPixel strip(NUM_PIXELS, LED_PIN, NEO_GRB + NEO_KHZ800);
 
 const uint8_t DIGIT_WIDTH = 3;
 const uint8_t DIGIT_HEIGHT = 5;
+const uint8_t COLON_WIDTH = 1;
+const int CHAR_SPACING = 1;
+const int TEXT_BASELINE_Y = 1;
+const unsigned long SCROLL_INTERVAL_MS = 130;
+const unsigned long TIME_REFRESH_MS = 1000;
 
 // Each byte is one row, stored in the low 3 bits.
 const uint8_t digitFont[10][DIGIT_HEIGHT] = {
@@ -36,9 +41,16 @@ const uint8_t digitFont[10][DIGIT_HEIGHT] = {
   {0b111, 0b101, 0b111, 0b001, 0b111}  // 9
 };
 
-uint32_t hourColor;
+const uint8_t colonFont[DIGIT_HEIGHT] = {
+  0b0, 0b1, 0b0, 0b1, 0b0
+};
+
+uint32_t timeColor;
 uint32_t bgColor;
-int lastHour = -1;
+char currentTimeText[6] = "00:00";
+int scrollX = MATRIX_WIDTH;
+unsigned long lastScrollMs = 0;
+unsigned long lastTimeRefreshMs = 0;
 
 int pixelIndex(int x, int y) {
   if (x < 0 || x >= MATRIX_WIDTH || y < 0 || y >= MATRIX_HEIGHT) {
@@ -70,30 +82,60 @@ void fillMatrix(uint32_t color) {
   strip.show();
 }
 
-void drawDigit(int digit, int offsetX, int offsetY, uint32_t color) {
-  if (digit < 0 || digit > 9) return;
+int glyphWidth(char c) {
+  if (c >= '0' && c <= '9') return DIGIT_WIDTH;
+  if (c == ':') return COLON_WIDTH;
+  return 0;
+}
+
+bool glyphPixelOn(char c, int row, int col) {
+  if (row < 0 || row >= DIGIT_HEIGHT) return false;
+  if (c >= '0' && c <= '9') {
+    uint8_t rowBits = digitFont[c - '0'][row];
+    return rowBits & (1 << (DIGIT_WIDTH - 1 - col));
+  }
+  if (c == ':') {
+    return colonFont[row] & 0b1;
+  }
+  return false;
+}
+
+void drawGlyph(char c, int offsetX, int offsetY, uint32_t color) {
+  int width = glyphWidth(c);
   for (int row = 0; row < DIGIT_HEIGHT; row++) {
-    uint8_t rowBits = digitFont[digit][row];
-    for (int col = 0; col < DIGIT_WIDTH; col++) {
-      bool on = rowBits & (1 << (DIGIT_WIDTH - 1 - col));
-      setPixel(offsetX + col, offsetY + row, on ? color : bgColor);
+    for (int col = 0; col < width; col++) {
+      setPixel(offsetX + col, offsetY + row, glyphPixelOn(c, row, col) ? color : bgColor);
     }
   }
 }
 
-void showHour(int hour) {
-  clearMatrix();
-  int tens = hour / 10;
-  int ones = hour % 10;
-  int offsetY = 1;
+int textPixelWidth(const char* text) {
+  int width = 0;
+  for (int i = 0; text[i] != '\0'; i++) {
+    width += glyphWidth(text[i]);
+    if (text[i + 1] != '\0') width += CHAR_SPACING;
+  }
+  return width;
+}
 
-  if (tens == 0) {
-    drawDigit(ones, 2, offsetY, hourColor);
-  } else {
-    drawDigit(tens, 0, offsetY, hourColor);
-    drawDigit(ones, 4, offsetY, hourColor);
+void drawScrollingText(const char* text, int startX, int y, uint32_t color) {
+  clearMatrix();
+  int cursorX = startX;
+  for (int i = 0; text[i] != '\0'; i++) {
+    drawGlyph(text[i], cursorX, y, color);
+    cursorX += glyphWidth(text[i]) + CHAR_SPACING;
   }
   strip.show();
+}
+
+bool updateTimeString() {
+  struct tm timeinfo;
+  if (!getLocalTime(&timeinfo, 100)) {
+    return false;
+  }
+
+  snprintf(currentTimeText, sizeof(currentTimeText), "%02d:%02d", timeinfo.tm_hour, timeinfo.tm_min);
+  return true;
 }
 
 bool waitForTime() {
@@ -150,32 +192,42 @@ void setup() {
   strip.setBrightness(BRIGHTNESS);
   strip.show();
 
-  hourColor = strip.Color(0, 120, 200);
+  timeColor = strip.Color(140, 0, 0);
   bgColor = strip.Color(0, 0, 0);
-  fillMatrix(strip.Color(0, 0, 35));
+  fillMatrix(strip.Color(20, 0, 0));
 
   connectWiFi();
-  fillMatrix(strip.Color(35, 20, 0));
+  fillMatrix(strip.Color(35, 0, 0));
   setupTime();
 
-  struct tm timeinfo;
-  if (getLocalTime(&timeinfo, 1000)) {
-    lastHour = timeinfo.tm_hour;
-    showHour(lastHour);
-    Serial.printf("Showing local hour: %02d\n", lastHour);
+  if (updateTimeString()) {
+    scrollX = MATRIX_WIDTH;
+    drawScrollingText(currentTimeText, scrollX, TEXT_BASELINE_Y, timeColor);
+    Serial.printf("Scrolling local time: %s\n", currentTimeText);
   } else {
     fillMatrix(strip.Color(100, 0, 0));
   }
 }
 
 void loop() {
-  struct tm timeinfo;
-  if (getLocalTime(&timeinfo, 100)) {
-    if (timeinfo.tm_hour != lastHour) {
-      lastHour = timeinfo.tm_hour;
-      showHour(lastHour);
-      Serial.printf("Hour updated: %02d\n", lastHour);
+  unsigned long nowMs = millis();
+
+  if (nowMs - lastTimeRefreshMs >= TIME_REFRESH_MS) {
+    lastTimeRefreshMs = nowMs;
+    if (!updateTimeString()) {
+      fillMatrix(strip.Color(100, 0, 0));
+      delay(250);
+      return;
     }
   }
-  delay(60000);
+
+  if (nowMs - lastScrollMs >= SCROLL_INTERVAL_MS) {
+    lastScrollMs = nowMs;
+    int width = textPixelWidth(currentTimeText);
+    drawScrollingText(currentTimeText, scrollX, TEXT_BASELINE_Y, timeColor);
+    scrollX--;
+    if (scrollX < -width) {
+      scrollX = MATRIX_WIDTH;
+    }
+  }
 }
