@@ -256,6 +256,15 @@ bool updateTimeText() {
   }
 
   snprintf(currentTimeText, sizeof(currentTimeText), "%02d:%02d", timeinfo.tm_hour, timeinfo.tm_min);
+  // Time color schedule:
+  // Red during 20:00-08:00 and 13:00-15:00, otherwise green.
+  bool inNightWindow = (timeinfo.tm_hour >= 20) || (timeinfo.tm_hour < 8);
+  bool inAfternoonWindow = (timeinfo.tm_hour >= 13) && (timeinfo.tm_hour < 15);
+  if (inNightWindow || inAfternoonWindow) {
+    timeColor = strip.Color(180, 0, 0);
+  } else {
+    timeColor = strip.Color(0, 180, 0);
+  }
   return true;
 }
 
