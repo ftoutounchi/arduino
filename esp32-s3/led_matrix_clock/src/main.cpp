@@ -1,6 +1,8 @@
 #include <WiFi.h>
 #include <time.h>
 #include <sys/time.h>
+#include <WiFiClientSecure.h>
+#include <HTTPClient.h>
 #include <Adafruit_NeoPixel.h>
 
 #define MATRIX_WIDTH 8
@@ -25,6 +27,11 @@ const uint8_t COLON_WIDTH = 1;
 const int CHAR_SPACING = 1;
 const unsigned long TIME_REFRESH_MS = 1000;
 const unsigned long SCROLL_STEP_MS = 180;
+const unsigned long WEATHER_REFRESH_MS = 10UL * 60UL * 1000UL;
+const unsigned long WEATHER_RETRY_MS = 30UL * 1000UL;
+const unsigned long WEATHER_SHOW_MS = 4500;
+const float WEATHER_LAT = 53.5991f;   // Hamburg
+const float WEATHER_LON = 10.0267f;   // Hamburg
 
 // 3x5 font, each row stored in low 3 bits.
 const uint8_t digitFont[10][DIGIT_HEIGHT] = {
@@ -48,6 +55,18 @@ char currentTimeText[6] = "00:00";
 int scrollOffsetX = MATRIX_WIDTH;
 unsigned long lastScrollStepMs = 0;
 unsigned long lastTimeRefreshMs = 0;
+unsigned long weatherShownSinceMs = 0;
+unsigned long lastWeatherFetchMs = 0;
+bool weatherValid = false;
+int weatherCode = 0;
+bool isDay = true;
+
+enum DisplayMode {
+  SHOW_TIME,
+  SHOW_WEATHER
+};
+
+DisplayMode displayMode = SHOW_TIME;
 
 int pixelIndex(int x, int y) {
   if (x < 0 || x >= MATRIX_WIDTH || y < 0 || y >= MATRIX_HEIGHT) {
@@ -74,6 +93,68 @@ void fillMatrix(uint32_t color) {
   for (int i = 0; i < NUM_PIXELS; i++) {
     strip.setPixelColor(i, color);
   }
+  strip.show();
+}
+
+void drawCloud(int ox, int oy, uint32_t color) {
+  const int cloudPixels[][2] = {
+      {1, 1}, {2, 0}, {3, 0}, {4, 1}, {5, 1},
+      {0, 2}, {1, 2}, {2, 2}, {3, 2}, {4, 2}, {5, 2}, {6, 2},
+      {1, 3}, {2, 3}, {3, 3}, {4, 3}, {5, 3}
+  };
+  for (size_t i = 0; i < sizeof(cloudPixels) / sizeof(cloudPixels[0]); i++) {
+    setPixel(ox + cloudPixels[i][0], oy + cloudPixels[i][1], color);
+  }
+}
+
+void drawSun(int ox, int oy, uint32_t sunColor) {
+  const int core[][2] = {{1, 1}, {2, 1}, {1, 2}, {2, 2}};
+  const int rays[][2] = {{1, 0}, {2, 0}, {1, 3}, {2, 3}, {0, 1}, {0, 2}, {3, 1}, {3, 2}};
+  for (size_t i = 0; i < sizeof(core) / sizeof(core[0]); i++) setPixel(ox + core[i][0], oy + core[i][1], sunColor);
+  for (size_t i = 0; i < sizeof(rays) / sizeof(rays[0]); i++) setPixel(ox + rays[i][0], oy + rays[i][1], sunColor);
+}
+
+void drawRain(int ox, int oy, uint32_t cloudColor, uint32_t rainColor) {
+  drawCloud(ox, oy, cloudColor);
+  setPixel(ox + 1, oy + 5, rainColor);
+  setPixel(ox + 3, oy + 6, rainColor);
+  setPixel(ox + 5, oy + 5, rainColor);
+}
+
+void drawThunder(int ox, int oy, uint32_t cloudColor, uint32_t boltColor) {
+  drawCloud(ox, oy, cloudColor);
+  setPixel(ox + 3, oy + 4, boltColor);
+  setPixel(ox + 2, oy + 5, boltColor);
+  setPixel(ox + 3, oy + 5, boltColor);
+  setPixel(ox + 2, oy + 6, boltColor);
+}
+
+void showWeatherIcon() {
+  clearMatrix();
+
+  uint32_t yellow = strip.Color(180, 140, 0);
+  uint32_t blue = strip.Color(0, 60, 180);
+  uint32_t cloud = strip.Color(80, 80, 90);
+  uint32_t white = strip.Color(120, 120, 120);
+  uint32_t magenta = strip.Color(120, 0, 120);
+
+  // WMO categories: clear(0,1), cloudy(2,3,45,48), rain(51-67,80-82), snow(71-77,85,86), thunder(95+)
+  if (weatherCode == 0 || weatherCode == 1) {
+    drawSun(2, 2, yellow);
+  } else if ((weatherCode >= 2 && weatherCode <= 3) || weatherCode == 45 || weatherCode == 48) {
+    drawCloud(1, 2, white);
+  } else if ((weatherCode >= 51 && weatherCode <= 67) || (weatherCode >= 80 && weatherCode <= 82)) {
+    drawRain(1, 1, cloud, blue);
+  } else if ((weatherCode >= 71 && weatherCode <= 77) || weatherCode == 85 || weatherCode == 86) {
+    drawCloud(1, 1, white);
+    setPixel(2, 6, white);
+    setPixel(4, 6, white);
+  } else if (weatherCode >= 95) {
+    drawThunder(1, 1, cloud, magenta);
+  } else {
+    drawCloud(1, 2, white);
+  }
+
   strip.show();
 }
 
@@ -131,6 +212,67 @@ bool updateTimeText() {
   }
 
   snprintf(currentTimeText, sizeof(currentTimeText), "%02d:%02d", timeinfo.tm_hour, timeinfo.tm_min);
+  return true;
+}
+
+int extractIntAfterKey(const String& payload, const char* key, int fallback) {
+  int keyPos = payload.indexOf(key);
+  if (keyPos < 0) return fallback;
+  int colon = payload.indexOf(':', keyPos);
+  if (colon < 0) return fallback;
+  int i = colon + 1;
+  while (i < payload.length() && (payload[i] == ' ' || payload[i] == '\n' || payload[i] == '\r')) i++;
+  int sign = 1;
+  if (i < payload.length() && payload[i] == '-') {
+    sign = -1;
+    i++;
+  }
+  int value = 0;
+  bool hasDigit = false;
+  while (i < payload.length() && isdigit(payload[i])) {
+    hasDigit = true;
+    value = value * 10 + (payload[i] - '0');
+    i++;
+  }
+  return hasDigit ? sign * value : fallback;
+}
+
+bool fetchWeather() {
+  if (WiFi.status() != WL_CONNECTED) {
+    return false;
+  }
+
+  WiFiClientSecure secureClient;
+  secureClient.setInsecure();
+  HTTPClient http;
+  char url[220];
+  snprintf(url, sizeof(url),
+           "https://api.open-meteo.com/v1/forecast?latitude=%.4f&longitude=%.4f&current=weather_code,is_day&timezone=auto",
+           WEATHER_LAT, WEATHER_LON);
+
+  if (!http.begin(secureClient, url)) return false;
+  http.setConnectTimeout(10000);
+  http.setTimeout(10000);
+  http.addHeader("Accept", "application/json");
+
+  int code = http.GET();
+  if (code != HTTP_CODE_OK) {
+    http.end();
+    return false;
+  }
+
+  String payload = http.getString();
+  http.end();
+
+  int newCode = extractIntAfterKey(payload, "\"weather_code\"", -1);
+  int dayFlag = extractIntAfterKey(payload, "\"is_day\"", 1);
+  if (newCode < 0) return false;
+
+  weatherCode = newCode;
+  isDay = (dayFlag == 1);
+  weatherValid = true;
+  lastWeatherFetchMs = millis();
+  Serial.printf("Weather updated: code=%d, isDay=%d\n", weatherCode, isDay ? 1 : 0);
   return true;
 }
 
@@ -195,6 +337,7 @@ void setup() {
   connectWiFi();
   fillMatrix(strip.Color(35, 0, 0));
   setupTime();
+  fetchWeather();
 
   if (updateTimeText()) {
     scrollOffsetX = MATRIX_WIDTH;
@@ -217,13 +360,31 @@ void loop() {
     }
   }
 
-  if (nowMs - lastScrollStepMs >= SCROLL_STEP_MS) {
-    lastScrollStepMs = nowMs;
-    showScrollingTime(currentTimeText, scrollOffsetX);
-    scrollOffsetX--;
-    int width = textPixelWidth(currentTimeText);
-    if (scrollOffsetX < -width) {
-      scrollOffsetX = MATRIX_WIDTH;
+  unsigned long weatherInterval = weatherValid ? WEATHER_REFRESH_MS : WEATHER_RETRY_MS;
+  if (nowMs - lastWeatherFetchMs >= weatherInterval) {
+    fetchWeather();
+  }
+
+  if (displayMode == SHOW_TIME) {
+    if (nowMs - lastScrollStepMs >= SCROLL_STEP_MS) {
+      lastScrollStepMs = nowMs;
+      showScrollingTime(currentTimeText, scrollOffsetX);
+      scrollOffsetX--;
+      int width = textPixelWidth(currentTimeText);
+      if (scrollOffsetX < -width) {
+        scrollOffsetX = MATRIX_WIDTH;
+        displayMode = SHOW_WEATHER;
+        weatherShownSinceMs = nowMs;
+      }
+    }
+  } else {
+    if (weatherValid) {
+      showWeatherIcon();
+    } else {
+      fillMatrix(strip.Color(80, 0, 0));
+    }
+    if (nowMs - weatherShownSinceMs >= WEATHER_SHOW_MS) {
+      displayMode = SHOW_TIME;
     }
   }
 }
