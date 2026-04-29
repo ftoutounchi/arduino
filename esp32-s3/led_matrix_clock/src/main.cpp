@@ -435,36 +435,8 @@ void loop() {
     fetchWeather();
   }
 
-  if (displayMode == SHOW_TIME) {
-    if (nowMs - lastScrollStepMs >= SCROLL_STEP_MS) {
-      lastScrollStepMs = nowMs;
-      showScrollingTime(currentTimeText, scrollOffsetX);
-      scrollOffsetX--;
-      int width = textPixelWidth(currentTimeText);
-      if (scrollOffsetX < -width) {
-        scrollOffsetX = MATRIX_WIDTH;
-        displayMode = SHOW_WEATHER;
-        weatherShownSinceMs = nowMs;
-        Serial.println("Mode: WEATHER");
-      }
-    }
-  } else {
-    if (displayMode == SHOW_WEATHER) {
-      // Always show an icon scene even if fetch failed (cloud fallback).
-      showWeatherIcon();
-      if (nowMs - weatherShownSinceMs >= WEATHER_SHOW_MS) {
-        displayMode = SHOW_TEMP;
-        tempShownSinceMs = nowMs;
-        tempScrollOffsetX = MATRIX_WIDTH;
-        Serial.printf("Mode: TEMP (%s)\n", tempText);
-      }
-    } else {
-      showCenteredText(tempText, weatherThemeColor());
-      if (nowMs - tempShownSinceMs >= TEMP_SHOW_MS) {
-        displayMode = SHOW_TIME;
-        scrollOffsetX = MATRIX_WIDTH;
-        Serial.println("Mode: TIME");
-      }
-    }
-  }
+  // Temperature-only mode requested by user: centered blue numeric value.
+  char tempValueText[6];
+  snprintf(tempValueText, sizeof(tempValueText), "%d", static_cast<int>(weatherTempC));
+  showCenteredText(tempValueText, strip.Color(0, 0, 180));
 }
