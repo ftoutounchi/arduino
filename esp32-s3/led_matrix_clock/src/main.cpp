@@ -1,5 +1,6 @@
 #include <WiFi.h>
 #include <time.h>
+#include <sys/time.h>
 #include <Adafruit_NeoPixel.h>
 
 #define MATRIX_WIDTH 8
@@ -128,9 +129,11 @@ void connectWiFi() {
 }
 
 void setupTime() {
+  timeval resetTime = {};
+  settimeofday(&resetTime, nullptr);
+  configTime(0, 0, "pool.ntp.org", "time.nist.gov");
   setenv("TZ", timezone, 1);
   tzset();
-  configTime(0, 0, "pool.ntp.org", "time.nist.gov");
   if (waitForTime()) {
     Serial.println("Time synchronized.");
   } else {
