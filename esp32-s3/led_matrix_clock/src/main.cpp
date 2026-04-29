@@ -8,7 +8,7 @@
 #define NUM_PIXELS (MATRIX_WIDTH * MATRIX_HEIGHT)
 
 #ifndef LED_PIN
-#define LED_PIN 21
+#define LED_PIN 6
 #endif
 
 #define BRIGHTNESS 45
