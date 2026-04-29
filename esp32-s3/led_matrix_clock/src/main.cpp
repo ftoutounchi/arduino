@@ -1,7 +1,7 @@
 #include <WiFi.h>
 #include <time.h>
 #include <sys/time.h>
-#include <WiFiClientSecure.h>
+#include <WiFiClient.h>
 #include <HTTPClient.h>
 #include <Adafruit_NeoPixel.h>
 
@@ -216,47 +216,63 @@ bool updateTimeText() {
 }
 
 int extractIntAfterKey(const String& payload, const char* key, int fallback) {
-  int keyPos = payload.indexOf(key);
-  if (keyPos < 0) return fallback;
-  int colon = payload.indexOf(':', keyPos);
-  if (colon < 0) return fallback;
-  int i = colon + 1;
-  while (i < payload.length() && (payload[i] == ' ' || payload[i] == '\n' || payload[i] == '\r')) i++;
-  int sign = 1;
-  if (i < payload.length() && payload[i] == '-') {
-    sign = -1;
-    i++;
+  int searchFrom = 0;
+  while (true) {
+    int keyPos = payload.indexOf(key, searchFrom);
+    if (keyPos < 0) return fallback;
+
+    int colon = payload.indexOf(':', keyPos);
+    if (colon < 0) return fallback;
+
+    int i = colon + 1;
+    while (i < payload.length() && (payload[i] == ' ' || payload[i] == '\n' || payload[i] == '\r')) i++;
+
+    int sign = 1;
+    if (i < payload.length() && payload[i] == '-') {
+      sign = -1;
+      i++;
+    }
+
+    int value = 0;
+    bool hasDigit = false;
+    while (i < payload.length() && isdigit(payload[i])) {
+      hasDigit = true;
+      value = value * 10 + (payload[i] - '0');
+      i++;
+    }
+
+    if (hasDigit) {
+      return sign * value;
+    }
+
+    searchFrom = keyPos + 1;
   }
-  int value = 0;
-  bool hasDigit = false;
-  while (i < payload.length() && isdigit(payload[i])) {
-    hasDigit = true;
-    value = value * 10 + (payload[i] - '0');
-    i++;
-  }
-  return hasDigit ? sign * value : fallback;
 }
 
 bool fetchWeather() {
   if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("Weather fetch skipped: WiFi not connected");
     return false;
   }
 
-  WiFiClientSecure secureClient;
-  secureClient.setInsecure();
+  WiFiClient client;
   HTTPClient http;
   char url[220];
   snprintf(url, sizeof(url),
-           "https://api.open-meteo.com/v1/forecast?latitude=%.4f&longitude=%.4f&current=weather_code,is_day&timezone=auto",
+           "http://api.open-meteo.com/v1/forecast?latitude=%.4f&longitude=%.4f&current=weather_code,is_day&timezone=auto",
            WEATHER_LAT, WEATHER_LON);
 
-  if (!http.begin(secureClient, url)) return false;
+  if (!http.begin(client, url)) {
+    Serial.println("Weather begin failed");
+    return false;
+  }
   http.setConnectTimeout(10000);
   http.setTimeout(10000);
   http.addHeader("Accept", "application/json");
 
-  int code = http.GET();
-  if (code != HTTP_CODE_OK) {
+  int httpCode = http.GET();
+  if (httpCode != HTTP_CODE_OK) {
+    Serial.printf("Weather GET failed: %d\n", httpCode);
     http.end();
     return false;
   }
@@ -265,8 +281,15 @@ bool fetchWeather() {
   http.end();
 
   int newCode = extractIntAfterKey(payload, "\"weather_code\"", -1);
+  if (newCode < 0) {
+    newCode = extractIntAfterKey(payload, "\"weathercode\"", -1);
+  }
   int dayFlag = extractIntAfterKey(payload, "\"is_day\"", 1);
-  if (newCode < 0) return false;
+  if (newCode < 0) {
+    Serial.println("Weather parse failed: weather_code missing");
+    Serial.printf("Payload head: %.140s\n", payload.c_str());
+    return false;
+  }
 
   weatherCode = newCode;
   isDay = (dayFlag == 1);
@@ -378,11 +401,8 @@ void loop() {
       }
     }
   } else {
-    if (weatherValid) {
-      showWeatherIcon();
-    } else {
-      fillMatrix(strip.Color(80, 0, 0));
-    }
+    // Always show an icon scene even if fetch failed (cloud fallback).
+    showWeatherIcon();
     if (nowMs - weatherShownSinceMs >= WEATHER_SHOW_MS) {
       displayMode = SHOW_TIME;
     }
