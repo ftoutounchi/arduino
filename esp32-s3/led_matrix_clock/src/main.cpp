@@ -49,6 +49,8 @@ const uint8_t digitFont[10][DIGIT_HEIGHT] = {
 };
 
 const uint8_t colonFont[DIGIT_HEIGHT] = {0b0, 0b1, 0b0, 0b1, 0b0};
+const uint8_t cFont[DIGIT_HEIGHT] = {0b111, 0b100, 0b100, 0b100, 0b111};
+const uint8_t minusFont[DIGIT_HEIGHT] = {0b000, 0b000, 0b111, 0b000, 0b000};
 
 uint32_t timeColor;
 uint32_t bgColor;
@@ -167,6 +169,7 @@ void showWeatherIcon() {
 int glyphWidth(char c) {
   if (c >= '0' && c <= '9') return DIGIT_WIDTH;
   if (c == ':') return COLON_WIDTH;
+  if (c == 'C' || c == '-') return DIGIT_WIDTH;
   return 0;
 }
 
@@ -178,6 +181,12 @@ bool glyphPixelOn(char c, int row, int col) {
   }
   if (c == ':') {
     return (col == 0) && (colonFont[row] & 0b1);
+  }
+  if (c == 'C') {
+    return cFont[row] & (1 << (DIGIT_WIDTH - 1 - col));
+  }
+  if (c == '-') {
+    return minusFont[row] & (1 << (DIGIT_WIDTH - 1 - col));
   }
   return false;
 }
@@ -204,6 +213,18 @@ int textPixelWidth(const char* text) {
 void showScrollingTime(const char* text, int offsetX) {
   clearMatrix();
   int cursorX = offsetX;
+  for (int i = 0; text[i] != '\0'; i++) {
+    drawGlyph(text[i], cursorX, 1, timeColor);
+    cursorX += glyphWidth(text[i]) + CHAR_SPACING;
+  }
+  strip.show();
+}
+
+void showCenteredText(const char* text) {
+  clearMatrix();
+  int width = textPixelWidth(text);
+  int startX = (MATRIX_WIDTH - width) / 2;
+  int cursorX = startX;
   for (int i = 0; text[i] != '\0'; i++) {
     drawGlyph(text[i], cursorX, 1, timeColor);
     cursorX += glyphWidth(text[i]) + CHAR_SPACING;
@@ -407,6 +428,7 @@ void loop() {
         scrollOffsetX = MATRIX_WIDTH;
         displayMode = SHOW_WEATHER;
         weatherShownSinceMs = nowMs;
+        Serial.println("Mode: WEATHER");
       }
     }
   } else {
@@ -417,17 +439,14 @@ void loop() {
         displayMode = SHOW_TEMP;
         tempShownSinceMs = nowMs;
         tempScrollOffsetX = MATRIX_WIDTH;
+        Serial.printf("Mode: TEMP (%s)\n", tempText);
       }
     } else {
-      showScrollingTime(tempText, tempScrollOffsetX);
-      if (nowMs - lastScrollStepMs >= SCROLL_STEP_MS) {
-        lastScrollStepMs = nowMs;
-        tempScrollOffsetX--;
-      }
-      int tempWidth = textPixelWidth(tempText);
-      if (tempScrollOffsetX < -tempWidth || nowMs - tempShownSinceMs >= TEMP_SHOW_MS) {
+      showCenteredText(tempText);
+      if (nowMs - tempShownSinceMs >= TEMP_SHOW_MS) {
         displayMode = SHOW_TIME;
         scrollOffsetX = MATRIX_WIDTH;
+        Serial.println("Mode: TIME");
       }
     }
   }
