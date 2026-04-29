@@ -435,8 +435,33 @@ void loop() {
     fetchWeather();
   }
 
-  // Temperature-only mode requested by user: centered blue numeric value.
-  char tempValueText[6];
-  snprintf(tempValueText, sizeof(tempValueText), "%d", static_cast<int>(weatherTempC));
-  showCenteredText(tempValueText, strip.Color(0, 0, 180));
+  if (displayMode == SHOW_TIME) {
+    if (nowMs - lastScrollStepMs >= SCROLL_STEP_MS) {
+      lastScrollStepMs = nowMs;
+      showScrollingTime(currentTimeText, scrollOffsetX);
+      scrollOffsetX--;
+      int width = textPixelWidth(currentTimeText);
+      if (scrollOffsetX < -width) {
+        scrollOffsetX = MATRIX_WIDTH;
+        displayMode = SHOW_WEATHER;
+        weatherShownSinceMs = nowMs;
+      }
+    }
+  } else {
+    if (displayMode == SHOW_WEATHER) {
+      showWeatherIcon();
+      if (nowMs - weatherShownSinceMs >= WEATHER_SHOW_MS) {
+        displayMode = SHOW_TEMP;
+        tempShownSinceMs = nowMs;
+      }
+    } else {
+      char tempValueText[6];
+      snprintf(tempValueText, sizeof(tempValueText), "%d", static_cast<int>(weatherTempC));
+      showCenteredText(tempValueText, strip.Color(0, 0, 180));
+      if (nowMs - tempShownSinceMs >= TEMP_SHOW_MS) {
+        displayMode = SHOW_TIME;
+        scrollOffsetX = MATRIX_WIDTH;
+      }
+    }
+  }
 }
