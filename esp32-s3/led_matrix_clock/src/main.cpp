@@ -50,9 +50,6 @@ int pixelIndex(int x, int y) {
   if (x < 0 || x >= MATRIX_WIDTH || y < 0 || y >= MATRIX_HEIGHT) {
     return -1;
   }
-  if (y % 2 == 0) {
-    return y * MATRIX_WIDTH + x;
-  }
   return y * MATRIX_WIDTH + (MATRIX_WIDTH - 1 - x);
 }
 
