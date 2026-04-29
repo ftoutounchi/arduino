@@ -30,6 +30,7 @@ const unsigned long SCROLL_STEP_MS = 180;
 const unsigned long WEATHER_REFRESH_MS = 10UL * 60UL * 1000UL;
 const unsigned long WEATHER_RETRY_MS = 30UL * 1000UL;
 const unsigned long WEATHER_SHOW_MS = 4500;
+const unsigned long TEMP_SHOW_MS = 3500;
 const float WEATHER_LAT = 53.5991f;   // Hamburg
 const float WEATHER_LON = 10.0267f;   // Hamburg
 
@@ -60,10 +61,15 @@ unsigned long lastWeatherFetchMs = 0;
 bool weatherValid = false;
 int weatherCode = 0;
 bool isDay = true;
+float weatherTempC = 0.0f;
+char tempText[8] = "--C";
+int tempScrollOffsetX = MATRIX_WIDTH;
+unsigned long tempShownSinceMs = 0;
 
 enum DisplayMode {
   SHOW_TIME,
-  SHOW_WEATHER
+  SHOW_WEATHER,
+  SHOW_TEMP
 };
 
 DisplayMode displayMode = SHOW_TIME;
@@ -259,7 +265,7 @@ bool fetchWeather() {
   HTTPClient http;
   char url[220];
   snprintf(url, sizeof(url),
-           "http://api.open-meteo.com/v1/forecast?latitude=%.4f&longitude=%.4f&current=weather_code,is_day&timezone=auto",
+           "http://api.open-meteo.com/v1/forecast?latitude=%.4f&longitude=%.4f&current=weather_code,is_day,temperature_2m&timezone=auto",
            WEATHER_LAT, WEATHER_LON);
 
   if (!http.begin(client, url)) {
@@ -285,6 +291,7 @@ bool fetchWeather() {
     newCode = extractIntAfterKey(payload, "\"weathercode\"", -1);
   }
   int dayFlag = extractIntAfterKey(payload, "\"is_day\"", 1);
+  int tempRaw = extractIntAfterKey(payload, "\"temperature_2m\"", 0);
   if (newCode < 0) {
     Serial.println("Weather parse failed: weather_code missing");
     Serial.printf("Payload head: %.140s\n", payload.c_str());
@@ -293,9 +300,11 @@ bool fetchWeather() {
 
   weatherCode = newCode;
   isDay = (dayFlag == 1);
+  weatherTempC = static_cast<float>(tempRaw);
+  snprintf(tempText, sizeof(tempText), "%dC", static_cast<int>(weatherTempC));
   weatherValid = true;
   lastWeatherFetchMs = millis();
-  Serial.printf("Weather updated: code=%d, isDay=%d\n", weatherCode, isDay ? 1 : 0);
+  Serial.printf("Weather updated: code=%d, isDay=%d, temp=%s\n", weatherCode, isDay ? 1 : 0, tempText);
   return true;
 }
 
@@ -401,10 +410,25 @@ void loop() {
       }
     }
   } else {
-    // Always show an icon scene even if fetch failed (cloud fallback).
-    showWeatherIcon();
-    if (nowMs - weatherShownSinceMs >= WEATHER_SHOW_MS) {
-      displayMode = SHOW_TIME;
+    if (displayMode == SHOW_WEATHER) {
+      // Always show an icon scene even if fetch failed (cloud fallback).
+      showWeatherIcon();
+      if (nowMs - weatherShownSinceMs >= WEATHER_SHOW_MS) {
+        displayMode = SHOW_TEMP;
+        tempShownSinceMs = nowMs;
+        tempScrollOffsetX = MATRIX_WIDTH;
+      }
+    } else {
+      showScrollingTime(tempText, tempScrollOffsetX);
+      if (nowMs - lastScrollStepMs >= SCROLL_STEP_MS) {
+        lastScrollStepMs = nowMs;
+        tempScrollOffsetX--;
+      }
+      int tempWidth = textPixelWidth(tempText);
+      if (tempScrollOffsetX < -tempWidth || nowMs - tempShownSinceMs >= TEMP_SHOW_MS) {
+        displayMode = SHOW_TIME;
+        scrollOffsetX = MATRIX_WIDTH;
+      }
     }
   }
 }
