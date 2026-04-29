@@ -22,8 +22,7 @@ Adafruit_NeoPixel strip(NUM_PIXELS, LED_PIN, NEO_GRB + NEO_KHZ800);
 const uint8_t DIGIT_WIDTH = 5;
 const uint8_t DIGIT_HEIGHT = 7;
 const unsigned long TIME_REFRESH_MS = 1000;
-const unsigned long DIGIT_SWITCH_MS = 1600;
-const unsigned long FLOAT_STEP_MS = 250;
+const unsigned long SCROLL_STEP_MS = 180;
 
 // 5x7 font, each row stored in low 5 bits.
 const uint8_t digitFont[10][DIGIT_HEIGHT] = {
@@ -43,9 +42,8 @@ uint32_t timeColor;
 uint32_t bgColor;
 char currentDigits[5] = "0000";
 int activeDigitIndex = 0;
-int floatPhase = 0;
-unsigned long lastFloatStepMs = 0;
-unsigned long lastDigitSwitchMs = 0;
+int digitOffsetX = MATRIX_WIDTH;
+unsigned long lastScrollStepMs = 0;
 unsigned long lastTimeRefreshMs = 0;
 
 int pixelIndex(int x, int y) {
@@ -89,14 +87,10 @@ void drawDigit(int digit, int offsetX, int offsetY, uint32_t color) {
   }
 }
 
-void showFloatingDigit(char digitChar) {
-  const int xOffsets[4] = {1, 2, 1, 0};
-  const int yOffsets[4] = {0, 0, 1, 0};
+void showScrollingDigit(char digitChar, int offsetX) {
   clearMatrix();
   int digit = digitChar - '0';
-  int x = xOffsets[floatPhase % 4];
-  int y = yOffsets[floatPhase % 4];
-  drawDigit(digit, x, y, timeColor);
+  drawDigit(digit, offsetX, 0, timeColor);
   strip.show();
 }
 
@@ -174,9 +168,9 @@ void setup() {
 
   if (updateTimeDigits()) {
     activeDigitIndex = 0;
-    floatPhase = 0;
-    showFloatingDigit(currentDigits[activeDigitIndex]);
-    Serial.printf("Floating local digits: %c %c %c %c\n",
+    digitOffsetX = MATRIX_WIDTH;
+    showScrollingDigit(currentDigits[activeDigitIndex], digitOffsetX);
+    Serial.printf("Scrolling local digits (R->L): %c %c %c %c\n",
                   currentDigits[0], currentDigits[1], currentDigits[2], currentDigits[3]);
   } else {
     fillMatrix(strip.Color(100, 0, 0));
@@ -195,14 +189,14 @@ void loop() {
     }
   }
 
-  if (nowMs - lastDigitSwitchMs >= DIGIT_SWITCH_MS) {
-    lastDigitSwitchMs = nowMs;
-    activeDigitIndex = (activeDigitIndex + 1) % 4;
-  }
+  if (nowMs - lastScrollStepMs >= SCROLL_STEP_MS) {
+    lastScrollStepMs = nowMs;
+    showScrollingDigit(currentDigits[activeDigitIndex], digitOffsetX);
+    digitOffsetX--;
 
-  if (nowMs - lastFloatStepMs >= FLOAT_STEP_MS) {
-    lastFloatStepMs = nowMs;
-    floatPhase = (floatPhase + 1) % 4;
-    showFloatingDigit(currentDigits[activeDigitIndex]);
+    if (digitOffsetX < -static_cast<int>(DIGIT_WIDTH)) {
+      digitOffsetX = MATRIX_WIDTH;
+      activeDigitIndex = (activeDigitIndex + 1) % 4;
+    }
   }
 }
