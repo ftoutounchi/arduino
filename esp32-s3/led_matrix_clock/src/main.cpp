@@ -51,6 +51,8 @@ const uint8_t digitFont[10][DIGIT_HEIGHT] = {
 const uint8_t colonFont[DIGIT_HEIGHT] = {0b0, 0b1, 0b0, 0b1, 0b0};
 const uint8_t cFont[DIGIT_HEIGHT] = {0b111, 0b100, 0b100, 0b100, 0b111};
 const uint8_t minusFont[DIGIT_HEIGHT] = {0b000, 0b000, 0b111, 0b000, 0b000};
+const uint8_t oFont[DIGIT_HEIGHT] = {0b000, 0b111, 0b101, 0b101, 0b111};
+const uint8_t starFont[DIGIT_HEIGHT] = {0b101, 0b010, 0b111, 0b010, 0b101};
 
 uint32_t timeColor;
 uint32_t bgColor;
@@ -64,7 +66,7 @@ bool weatherValid = false;
 int weatherCode = 0;
 bool isDay = true;
 float weatherTempC = 0.0f;
-char tempText[8] = "--C";
+char tempText[10] = "--*o*";
 int tempScrollOffsetX = MATRIX_WIDTH;
 unsigned long tempShownSinceMs = 0;
 
@@ -169,7 +171,7 @@ void showWeatherIcon() {
 int glyphWidth(char c) {
   if (c >= '0' && c <= '9') return DIGIT_WIDTH;
   if (c == ':') return COLON_WIDTH;
-  if (c == 'C' || c == '-') return DIGIT_WIDTH;
+  if (c == 'C' || c == '-' || c == 'o' || c == '*') return DIGIT_WIDTH;
   return 0;
 }
 
@@ -187,6 +189,12 @@ bool glyphPixelOn(char c, int row, int col) {
   }
   if (c == '-') {
     return minusFont[row] & (1 << (DIGIT_WIDTH - 1 - col));
+  }
+  if (c == 'o') {
+    return oFont[row] & (1 << (DIGIT_WIDTH - 1 - col));
+  }
+  if (c == '*') {
+    return starFont[row] & (1 << (DIGIT_WIDTH - 1 - col));
   }
   return false;
 }
@@ -220,16 +228,25 @@ void showScrollingTime(const char* text, int offsetX) {
   strip.show();
 }
 
-void showCenteredText(const char* text) {
+void showCenteredText(const char* text, uint32_t color) {
   clearMatrix();
   int width = textPixelWidth(text);
   int startX = (MATRIX_WIDTH - width) / 2;
   int cursorX = startX;
   for (int i = 0; text[i] != '\0'; i++) {
-    drawGlyph(text[i], cursorX, 1, timeColor);
+    drawGlyph(text[i], cursorX, 1, color);
     cursorX += glyphWidth(text[i]) + CHAR_SPACING;
   }
   strip.show();
+}
+
+uint32_t weatherThemeColor() {
+  if (weatherCode == 0 || weatherCode == 1) return strip.Color(180, 140, 0); // sunny yellow
+  if ((weatherCode >= 2 && weatherCode <= 3) || weatherCode == 45 || weatherCode == 48) return strip.Color(120, 120, 120); // cloud gray
+  if ((weatherCode >= 51 && weatherCode <= 67) || (weatherCode >= 80 && weatherCode <= 82)) return strip.Color(0, 60, 180); // rain blue
+  if ((weatherCode >= 71 && weatherCode <= 77) || weatherCode == 85 || weatherCode == 86) return strip.Color(160, 160, 180); // snow
+  if (weatherCode >= 95) return strip.Color(120, 0, 120); // thunder magenta
+  return strip.Color(140, 0, 0);
 }
 
 bool updateTimeText() {
@@ -322,7 +339,7 @@ bool fetchWeather() {
   weatherCode = newCode;
   isDay = (dayFlag == 1);
   weatherTempC = static_cast<float>(tempRaw);
-  snprintf(tempText, sizeof(tempText), "%dC", static_cast<int>(weatherTempC));
+  snprintf(tempText, sizeof(tempText), "%d*o*", static_cast<int>(weatherTempC));
   weatherValid = true;
   lastWeatherFetchMs = millis();
   Serial.printf("Weather updated: code=%d, isDay=%d, temp=%s\n", weatherCode, isDay ? 1 : 0, tempText);
@@ -442,7 +459,7 @@ void loop() {
         Serial.printf("Mode: TEMP (%s)\n", tempText);
       }
     } else {
-      showCenteredText(tempText);
+      showCenteredText(tempText, weatherThemeColor());
       if (nowMs - tempShownSinceMs >= TEMP_SHOW_MS) {
         displayMode = SHOW_TIME;
         scrollOffsetX = MATRIX_WIDTH;
