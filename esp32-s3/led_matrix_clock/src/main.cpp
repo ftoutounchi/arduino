@@ -19,30 +19,33 @@ const char* timezone = "CET-1CEST,M3.5.0/2,M10.5.0/3";
 
 Adafruit_NeoPixel strip(NUM_PIXELS, LED_PIN, NEO_GRB + NEO_KHZ800);
 
-const uint8_t DIGIT_WIDTH = 5;
-const uint8_t DIGIT_HEIGHT = 7;
+const uint8_t DIGIT_WIDTH = 3;
+const uint8_t DIGIT_HEIGHT = 5;
+const uint8_t COLON_WIDTH = 1;
+const int CHAR_SPACING = 1;
 const unsigned long TIME_REFRESH_MS = 1000;
 const unsigned long SCROLL_STEP_MS = 180;
 
-// 5x7 font, each row stored in low 5 bits.
+// 3x5 font, each row stored in low 3 bits.
 const uint8_t digitFont[10][DIGIT_HEIGHT] = {
-  {0b01110, 0b10001, 0b10011, 0b10101, 0b11001, 0b10001, 0b01110}, // 0
-  {0b00100, 0b01100, 0b00100, 0b00100, 0b00100, 0b00100, 0b01110}, // 1
-  {0b01110, 0b10001, 0b00001, 0b00010, 0b00100, 0b01000, 0b11111}, // 2
-  {0b11110, 0b00001, 0b00001, 0b01110, 0b00001, 0b00001, 0b11110}, // 3
-  {0b00010, 0b00110, 0b01010, 0b10010, 0b11111, 0b00010, 0b00010}, // 4
-  {0b11111, 0b10000, 0b10000, 0b11110, 0b00001, 0b00001, 0b11110}, // 5
-  {0b00110, 0b01000, 0b10000, 0b11110, 0b10001, 0b10001, 0b01110}, // 6
-  {0b11111, 0b00001, 0b00010, 0b00100, 0b01000, 0b01000, 0b01000}, // 7
-  {0b01110, 0b10001, 0b10001, 0b01110, 0b10001, 0b10001, 0b01110}, // 8
-  {0b01110, 0b10001, 0b10001, 0b01111, 0b00001, 0b00010, 0b11100}  // 9
+  {0b111, 0b101, 0b101, 0b101, 0b111}, // 0
+  {0b010, 0b110, 0b010, 0b010, 0b111}, // 1
+  {0b111, 0b001, 0b111, 0b100, 0b111}, // 2
+  {0b111, 0b001, 0b111, 0b001, 0b111}, // 3
+  {0b101, 0b101, 0b111, 0b001, 0b001}, // 4
+  {0b111, 0b100, 0b111, 0b001, 0b111}, // 5
+  {0b111, 0b100, 0b111, 0b101, 0b111}, // 6
+  {0b111, 0b001, 0b010, 0b010, 0b010}, // 7
+  {0b111, 0b101, 0b111, 0b101, 0b111}, // 8
+  {0b111, 0b101, 0b111, 0b001, 0b111}  // 9
 };
+
+const uint8_t colonFont[DIGIT_HEIGHT] = {0b0, 0b1, 0b0, 0b1, 0b0};
 
 uint32_t timeColor;
 uint32_t bgColor;
-char currentDigits[5] = "0000";
-int activeDigitIndex = 0;
-int digitOffsetX = MATRIX_WIDTH;
+char currentTimeText[6] = "00:00";
+int scrollOffsetX = MATRIX_WIDTH;
 unsigned long lastScrollStepMs = 0;
 unsigned long lastTimeRefreshMs = 0;
 
@@ -50,7 +53,8 @@ int pixelIndex(int x, int y) {
   if (x < 0 || x >= MATRIX_WIDTH || y < 0 || y >= MATRIX_HEIGHT) {
     return -1;
   }
-  return y * MATRIX_WIDTH + (MATRIX_WIDTH - 1 - x);
+  int mappedY = MATRIX_HEIGHT - 1 - y;
+  return mappedY * MATRIX_WIDTH + (MATRIX_WIDTH - 1 - x);
 }
 
 void setPixel(int x, int y, uint32_t color) {
@@ -73,31 +77,60 @@ void fillMatrix(uint32_t color) {
   strip.show();
 }
 
-void drawDigit(int digit, int offsetX, int offsetY, uint32_t color) {
-  if (digit < 0 || digit > 9) return;
+int glyphWidth(char c) {
+  if (c >= '0' && c <= '9') return DIGIT_WIDTH;
+  if (c == ':') return COLON_WIDTH;
+  return 0;
+}
+
+bool glyphPixelOn(char c, int row, int col) {
+  if (row < 0 || row >= DIGIT_HEIGHT) return false;
+  if (c >= '0' && c <= '9') {
+    uint8_t rowBits = digitFont[c - '0'][row];
+    return rowBits & (1 << (DIGIT_WIDTH - 1 - col));
+  }
+  if (c == ':') {
+    return (col == 0) && (colonFont[row] & 0b1);
+  }
+  return false;
+}
+
+void drawGlyph(char c, int offsetX, int offsetY, uint32_t color) {
+  int width = glyphWidth(c);
   for (int row = 0; row < DIGIT_HEIGHT; row++) {
-    uint8_t rowBits = digitFont[digit][row];
-    for (int col = 0; col < DIGIT_WIDTH; col++) {
-      bool on = rowBits & (1 << (DIGIT_WIDTH - 1 - col));
+    for (int col = 0; col < width; col++) {
+      bool on = glyphPixelOn(c, row, col);
       setPixel(offsetX + col, offsetY + row, on ? color : bgColor);
     }
   }
 }
 
-void showScrollingDigit(char digitChar, int offsetX) {
+int textPixelWidth(const char* text) {
+  int width = 0;
+  for (int i = 0; text[i] != '\0'; i++) {
+    width += glyphWidth(text[i]);
+    if (text[i + 1] != '\0') width += CHAR_SPACING;
+  }
+  return width;
+}
+
+void showScrollingTime(const char* text, int offsetX) {
   clearMatrix();
-  int digit = digitChar - '0';
-  drawDigit(digit, offsetX, 0, timeColor);
+  int cursorX = offsetX;
+  for (int i = 0; text[i] != '\0'; i++) {
+    drawGlyph(text[i], cursorX, 1, timeColor);
+    cursorX += glyphWidth(text[i]) + CHAR_SPACING;
+  }
   strip.show();
 }
 
-bool updateTimeDigits() {
+bool updateTimeText() {
   struct tm timeinfo;
   if (!getLocalTime(&timeinfo, 100)) {
     return false;
   }
 
-  snprintf(currentDigits, sizeof(currentDigits), "%02d%02d", timeinfo.tm_hour, timeinfo.tm_min);
+  snprintf(currentTimeText, sizeof(currentTimeText), "%02d:%02d", timeinfo.tm_hour, timeinfo.tm_min);
   return true;
 }
 
@@ -163,12 +196,10 @@ void setup() {
   fillMatrix(strip.Color(35, 0, 0));
   setupTime();
 
-  if (updateTimeDigits()) {
-    activeDigitIndex = 0;
-    digitOffsetX = MATRIX_WIDTH;
-    showScrollingDigit(currentDigits[activeDigitIndex], digitOffsetX);
-    Serial.printf("Scrolling local digits (R->L): %c %c %c %c\n",
-                  currentDigits[0], currentDigits[1], currentDigits[2], currentDigits[3]);
+  if (updateTimeText()) {
+    scrollOffsetX = MATRIX_WIDTH;
+    showScrollingTime(currentTimeText, scrollOffsetX);
+    Serial.printf("Scrolling local time (R->L): %s\n", currentTimeText);
   } else {
     fillMatrix(strip.Color(100, 0, 0));
   }
@@ -179,7 +210,7 @@ void loop() {
 
   if (nowMs - lastTimeRefreshMs >= TIME_REFRESH_MS) {
     lastTimeRefreshMs = nowMs;
-    if (!updateTimeDigits()) {
+    if (!updateTimeText()) {
       fillMatrix(strip.Color(100, 0, 0));
       delay(250);
       return;
@@ -188,12 +219,11 @@ void loop() {
 
   if (nowMs - lastScrollStepMs >= SCROLL_STEP_MS) {
     lastScrollStepMs = nowMs;
-    showScrollingDigit(currentDigits[activeDigitIndex], digitOffsetX);
-    digitOffsetX--;
-
-    if (digitOffsetX < -static_cast<int>(DIGIT_WIDTH)) {
-      digitOffsetX = MATRIX_WIDTH;
-      activeDigitIndex = (activeDigitIndex + 1) % 4;
+    showScrollingTime(currentTimeText, scrollOffsetX);
+    scrollOffsetX--;
+    int width = textPixelWidth(currentTimeText);
+    if (scrollOffsetX < -width) {
+      scrollOffsetX = MATRIX_WIDTH;
     }
   }
 }
