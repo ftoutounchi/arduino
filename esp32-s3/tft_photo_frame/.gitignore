@@ -1,0 +1,10 @@
+# PlatformIO build output
+.pio/
+
+# Local runtime data (can contain secrets/tokens/device-specific settings)
+fsdata/
+
+# Local Python environments/cache
+tools/.venv/
+tools/myenv/
+tools/__pycache__/

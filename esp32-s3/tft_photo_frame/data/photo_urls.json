@@ -1,0 +1,12 @@
+[
+  {
+    "mode": "numbered_random",
+    "repo_api_base": "https://api.github.com/repos/ftoutounchi/myAlbum/contents/contents/photos",
+    "prefix": "photo_",
+    "digits": 4,
+    "start_id": 1,
+    "end_id": 1001,
+    "ext": ".jpg",
+    "ref": "main"
+  }
+]

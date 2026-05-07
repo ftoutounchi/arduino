@@ -1,0 +1,9 @@
+Weather icon source:
+Meteocons / weather-icons by Bas Milius
+https://github.com/basmilius/weather-icons
+License: MIT
+
+Icons downloaded from:
+https://cdn.jsdelivr.net/gh/basmilius/weather-icons/production/fill/all/
+
+Generated sizes: 88x88 and 48x48 PNG
