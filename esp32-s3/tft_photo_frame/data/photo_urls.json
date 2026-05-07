@@ -1,7 +1,7 @@
 [
   {
     "mode": "numbered_random",
-    "repo_api_base": "https://api.github.com/repos/ftoutounchi/myAlbum/contents/contents/photos",
+    "repo_api_base": "https://api.github.com/repos/xxx",
     "prefix": "photo_",
     "digits": 4,
     "start_id": 1,
