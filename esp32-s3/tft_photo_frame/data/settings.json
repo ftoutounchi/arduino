@@ -1,0 +1,22 @@
+{
+  "auto_timeout_enabled": false,
+  "auto_timeout_ms": 30000,
+  "auto_cycle_enabled": true,
+  "auto_cycle_photo_count": 3,
+  "auto_cycle_duration_ms": 30000,
+  "photo_refresh_ms": 10000,
+  "photo_fill_mode": true,
+  "weather_label": "Hamburg",
+  "weather_latitude": 53.606,
+  "weather_longitude": 10.0676,
+  "display_transform": 3,
+  "agenda_url": "https://script.google.com/macros/s/xxx/exec",
+  "alarms": [
+    {
+      "enabled": false,
+      "hour": 7,
+      "minute": 0,
+      "label": "Alarm 1"
+    }
+  ]
+}
