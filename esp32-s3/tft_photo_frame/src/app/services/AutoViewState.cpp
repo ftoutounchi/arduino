@@ -1,7 +1,7 @@
 #include "app/services/AutoViewState.h"
 
 AutoViewState::AutoViewState()
-    : photosSinceLastInfoPage_(0), hasShownAnyPhoto_(false), dashboardEntryFromAutoCycle_(false) {}
+    : photosSinceLastInfoPage_(0), hasShownAnyPhoto_(false), nextPageEntryFromAutoCycle_(false) {}
 
 void AutoViewState::markPhotoDisplayed() {
   hasShownAnyPhoto_ = true;
@@ -22,10 +22,12 @@ bool AutoViewState::hasShownAnyPhoto() const {
   return hasShownAnyPhoto_;
 }
 
-void AutoViewState::setDashboardEntryFromAutoCycle(bool enabled) {
-  dashboardEntryFromAutoCycle_ = enabled;
+void AutoViewState::setNextPageEntryFromAutoCycle(bool enabled) {
+  nextPageEntryFromAutoCycle_ = enabled;
 }
 
-bool AutoViewState::dashboardEntryFromAutoCycle() const {
-  return dashboardEntryFromAutoCycle_;
+bool AutoViewState::consumeNextPageEntryFromAutoCycle() {
+  const bool value = nextPageEntryFromAutoCycle_;
+  nextPageEntryFromAutoCycle_ = false;
+  return value;
 }

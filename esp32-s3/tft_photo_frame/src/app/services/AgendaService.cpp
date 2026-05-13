@@ -28,8 +28,7 @@ void AgendaService::fetch(Result* outResult) const {
   if (count == 0) {
     outResult->success = true;
     outResult->statusText = "Google Calendar";
-    outResult->lines[0] = "No upcoming events";
-    outResult->lineCount = 1;
+    outResult->lineCount = 0;
   } else {
     outResult->success = true;
     outResult->statusText = "Google Calendar";
@@ -38,11 +37,10 @@ void AgendaService::fetch(Result* outResult) const {
     for (uint8_t i = 0; i < count; ++i) {
       String startShort;
       toStartShort(events[i].startIso, &startShort);
-      if (startShort.length() > 0) {
-        outResult->lines[i] = String(i + 1) + ". " + events[i].title + "\n" + startShort;
-      } else {
-        outResult->lines[i] = String(i + 1) + ". " + events[i].title;
+      if (startShort.length() == 0) {
+        startShort = "--";
       }
+      outResult->lines[i] = String(i + 1) + ". " + events[i].title + "\n" + startShort;
     }
   }
 

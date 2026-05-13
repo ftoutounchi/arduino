@@ -11,11 +11,11 @@ class AutoViewState {
   uint16_t photosSinceLastInfoPage() const;
   bool hasShownAnyPhoto() const;
 
-  void setDashboardEntryFromAutoCycle(bool enabled);
-  bool dashboardEntryFromAutoCycle() const;
+  void setNextPageEntryFromAutoCycle(bool enabled);
+  bool consumeNextPageEntryFromAutoCycle();
 
  private:
   uint16_t photosSinceLastInfoPage_;
   bool hasShownAnyPhoto_;
-  bool dashboardEntryFromAutoCycle_;
+  bool nextPageEntryFromAutoCycle_;
 };

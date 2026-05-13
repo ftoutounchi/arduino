@@ -31,4 +31,7 @@ class PhotoFramePage : public IPage {
   PhotoDownloadService& photoDownloads_;
   IPageNavigator& navigator_;
   AutoViewState& autoViewState_;
+  uint8_t autoCycleCursor_;
+
+  Id nextAutoCycleTarget(uint8_t pagesMask);
 };

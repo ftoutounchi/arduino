@@ -38,6 +38,42 @@ void copyCString(char* dst, size_t dstSize, const char* src) {
 bool nearlyEqual(double a, double b) {
   return fabs(a - b) <= 0.0005;
 }
+
+void formatCyclePagesMask(uint8_t mask, char* out, size_t outSize) {
+  if (out == nullptr || outSize == 0) {
+    return;
+  }
+
+  out[0] = '\0';
+  bool first = true;
+  const auto appendLabel = [&](const char* label) {
+    if (label == nullptr || label[0] == '\0') {
+      return;
+    }
+    if (!first) {
+      strncat(out, "|", outSize - strlen(out) - 1);
+    }
+    strncat(out, label, outSize - strlen(out) - 1);
+    first = false;
+  };
+
+  if ((mask & Config::kAutoCyclePageDashboard) != 0) {
+    appendLabel("Dash");
+  }
+  if ((mask & Config::kAutoCyclePageCalendar) != 0) {
+    appendLabel("Cal");
+  }
+  if ((mask & Config::kAutoCyclePageAgenda) != 0) {
+    appendLabel("Agenda");
+  }
+  if ((mask & Config::kAutoCyclePageAlarm) != 0) {
+    appendLabel("Alarm");
+  }
+
+  if (out[0] == '\0') {
+    copyCString(out, outSize, "Dash");
+  }
+}
 }  // namespace
 
 SettingsView::SettingsView(LvglHost& host, DisplayRenderer& display)
@@ -48,7 +84,7 @@ SettingsView::SettingsView(LvglHost& host, DisplayRenderer& display)
       lblTitle_(nullptr),
       tabBoxes_{nullptr, nullptr, nullptr, nullptr},
       tabLabels_{nullptr, nullptr, nullptr, nullptr},
-      lblRows_{nullptr, nullptr, nullptr, nullptr, nullptr, nullptr},
+      lblRows_{nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr},
       lblHint1_(nullptr),
       lblHint2_(nullptr),
       activeTabIndex_(static_cast<uint8_t>(TabId::kAuto)),
@@ -253,7 +289,7 @@ const char* SettingsView::tabName(uint8_t tabIndex) const {
 uint8_t SettingsView::rowCountForTab(uint8_t tabIndex) const {
   switch (static_cast<TabId>(tabIndex)) {
     case TabId::kAuto:
-      return 6;
+      return 7;
     case TabId::kPhoto:
       return 4;
     case TabId::kWeather:
@@ -278,8 +314,10 @@ SettingsView::SettingItem SettingsView::itemForRow(uint8_t tabIndex, uint8_t row
         case 3:
           return SettingItem::kCycleEnabled;
         case 4:
-          return SettingItem::kCyclePhotoCount;
+          return SettingItem::kCyclePages;
         case 5:
+          return SettingItem::kCyclePhotoCount;
+        case 6:
           return SettingItem::kCycleDuration;
         default:
           return SettingItem::kTabSwitch;
@@ -347,6 +385,12 @@ void SettingsView::formatRowText(SettingItem item, char* out, size_t outSize) co
     case SettingItem::kCycleEnabled:
       snprintf(out, outSize, "Auto cycle: %s", settings.infoPageAutoCycleEnabled ? "ON" : "OFF");
       break;
+    case SettingItem::kCyclePages: {
+      char pages[32];
+      formatCyclePagesMask(settings.infoPageAutoCyclePagesMask, pages, sizeof(pages));
+      snprintf(out, outSize, "Cycle pages: %s", pages);
+      break;
+    }
     case SettingItem::kCyclePhotoCount:
       snprintf(out, outSize, "Cycle photos: %u", static_cast<unsigned>(settings.infoPageAutoCyclePhotoCount));
       break;
@@ -441,6 +485,15 @@ bool SettingsView::applyEdit(SettingItem item) {
     case SettingItem::kCycleEnabled:
       settings.infoPageAutoCycleEnabled = !settings.infoPageAutoCycleEnabled;
       return true;
+    case SettingItem::kCyclePages: {
+      uint8_t nextMask = static_cast<uint8_t>((settings.infoPageAutoCyclePagesMask + 1U) &
+                                              Config::kAutoCyclePageMaskAll);
+      if (nextMask == 0) {
+        nextMask = Config::kDefaultInfoPageAutoCyclePagesMask;
+      }
+      settings.infoPageAutoCyclePagesMask = nextMask;
+      return true;
+    }
     case SettingItem::kCyclePhotoCount:
       settings.infoPageAutoCyclePhotoCount =
           static_cast<uint16_t>((settings.infoPageAutoCyclePhotoCount >= 20) ? 1 : (settings.infoPageAutoCyclePhotoCount + 1));

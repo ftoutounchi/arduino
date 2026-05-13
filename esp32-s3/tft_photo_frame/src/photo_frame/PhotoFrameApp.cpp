@@ -19,14 +19,18 @@ PhotoFrameApp::PhotoFrameApp()
       lvglHost_(display_),
       pageManager_(),
       photoFramePage_(display_, photoDownloads_, pageManager_, autoViewState_),
-      dashboardPage_(lvglHost_, weatherService_, pageManager_, autoViewState_),
+      dashboardPage_(lvglHost_, weatherService_, pageManager_),
       calendarPage_(lvglHost_, pageManager_),
       agendaPage_(lvglHost_, agendaService_, pageManager_),
       alarmPage_(lvglHost_, alarmScheduler_, pageManager_),
       settingsPage_(lvglHost_, display_, pageManager_),
       bootButton_(),
       configWeb_(),
-      configReloadPending_(false) {}
+      configReloadPending_(false),
+      globalTimeoutPageTracked_(false),
+      globalTimeoutPageId_(IPage::Id::kPhotoFrame),
+      globalTimeoutEntryFromAutoCycle_(false),
+      globalTimeoutEnteredAtMs_(0) {}
 
 void PhotoFrameApp::begin() {
   Serial.begin(115200);
@@ -86,6 +90,7 @@ void PhotoFrameApp::loop() {
     pageManager_.requestSwitch(IPage::Id::kAlarm);
   }
   pageManager_.update(now);
+  applyGlobalPageAutoTimeout(now);
   pageManager_.render();
 
   // Poll twice to reduce blind spots for short taps.
@@ -131,4 +136,51 @@ void PhotoFrameApp::processConfigReload() {
   photoDownloads_.resetDownloader();
   configReloadPending_ = false;
   Serial.println("WebConfig: runtime config reloaded");
+}
+
+void PhotoFrameApp::applyGlobalPageAutoTimeout(uint32_t nowMs) {
+  const IPage* activePage = pageManager_.currentPage();
+  if (activePage == nullptr) {
+    globalTimeoutPageTracked_ = false;
+    globalTimeoutEntryFromAutoCycle_ = false;
+    globalTimeoutEnteredAtMs_ = 0;
+    return;
+  }
+
+  const IPage::Id pageId = activePage->id();
+  if (!globalTimeoutPageTracked_ || globalTimeoutPageId_ != pageId) {
+    globalTimeoutPageTracked_ = true;
+    globalTimeoutPageId_ = pageId;
+    globalTimeoutEnteredAtMs_ = nowMs;
+    globalTimeoutEntryFromAutoCycle_ = autoViewState_.consumeNextPageEntryFromAutoCycle();
+    if (pageId != IPage::Id::kPhotoFrame) {
+      autoViewState_.resetPhotoCounter();
+    }
+    return;
+  }
+
+  if (pageId == IPage::Id::kPhotoFrame) {
+    return;
+  }
+
+  uint32_t dwellMs = 0;
+  if (globalTimeoutEntryFromAutoCycle_) {
+    dwellMs = Config::gAutoViewSettings.infoPageAutoCycleDurationMs;
+  } else {
+    if (!Config::gAutoViewSettings.infoPageAutoTimeoutEnabled) {
+      return;
+    }
+    dwellMs = Config::gAutoViewSettings.infoPageAutoTimeoutMs;
+  }
+
+  // Keep alert page visible while an alert is active.
+  if (pageId == IPage::Id::kAlarm && alarmScheduler_.hasActiveAlert()) {
+    return;
+  }
+
+  if (dwellMs > 0 && (nowMs - globalTimeoutEnteredAtMs_) >= dwellMs) {
+    globalTimeoutPageTracked_ = false;
+    globalTimeoutEntryFromAutoCycle_ = false;
+    pageManager_.requestSwitch(IPage::Id::kPhotoFrame);
+  }
 }

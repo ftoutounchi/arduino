@@ -4,6 +4,22 @@
 
 #include "config/AppConfig.h"
 
+namespace {
+struct AutoCyclePageOption {
+  uint8_t bit;
+  IPage::Id id;
+};
+
+constexpr AutoCyclePageOption kAutoCyclePageOptions[] = {
+    {Config::kAutoCyclePageDashboard, IPage::Id::kDashboard},
+    {Config::kAutoCyclePageCalendar, IPage::Id::kCalendar},
+    {Config::kAutoCyclePageAgenda, IPage::Id::kAgenda},
+    {Config::kAutoCyclePageAlarm, IPage::Id::kAlarm},
+};
+constexpr uint8_t kAutoCycleOptionCount =
+    static_cast<uint8_t>(sizeof(kAutoCyclePageOptions) / sizeof(kAutoCyclePageOptions[0]));
+}  // namespace
+
 PhotoFramePage::PhotoFramePage(DisplayRenderer& display,
                                PhotoDownloadService& photoDownloads,
                                IPageNavigator& navigator,
@@ -11,7 +27,8 @@ PhotoFramePage::PhotoFramePage(DisplayRenderer& display,
     : display_(display),
       photoDownloads_(photoDownloads),
       navigator_(navigator),
-      autoViewState_(autoViewState) {}
+      autoViewState_(autoViewState),
+      autoCycleCursor_(0) {}
 
 void PhotoFramePage::onEnter() {
   display_.fillScreen(ST77XX_BLACK);
@@ -47,8 +64,9 @@ void PhotoFramePage::update(uint32_t nowMs) {
   if (settings.infoPageAutoCycleEnabled && settings.infoPageAutoCyclePhotoCount > 0 &&
       autoViewState_.hasShownAnyPhoto() &&
       autoViewState_.photosSinceLastInfoPage() >= settings.infoPageAutoCyclePhotoCount) {
-    autoViewState_.setDashboardEntryFromAutoCycle(true);
-    navigator_.requestSwitch(Id::kDashboard);
+    autoViewState_.resetPhotoCounter();
+    autoViewState_.setNextPageEntryFromAutoCycle(true);
+    navigator_.requestSwitch(nextAutoCycleTarget(settings.infoPageAutoCyclePagesMask));
     return;
   }
 
@@ -61,7 +79,8 @@ void PhotoFramePage::render() {}
 
 void PhotoFramePage::handleEvent(const PageEvent& event) {
   if (event.type == PageEvent::Type::kBootShortPress) {
-    autoViewState_.setDashboardEntryFromAutoCycle(false);
+    autoViewState_.resetPhotoCounter();
+    autoViewState_.setNextPageEntryFromAutoCycle(false);
     navigator_.requestSwitch(Id::kDashboard);
     return;
   }
@@ -89,4 +108,22 @@ void PhotoFramePage::showWifiFailed() {
 
 void PhotoFramePage::showInitialDownloadStatus() {
   display_.showStatus("Downloading", "first image...");
+}
+
+IPage::Id PhotoFramePage::nextAutoCycleTarget(uint8_t pagesMask) {
+  uint8_t filteredMask = pagesMask & Config::kAutoCyclePageMaskAll;
+  if (filteredMask == 0) {
+    filteredMask = Config::kDefaultInfoPageAutoCyclePagesMask;
+  }
+
+  for (uint8_t i = 0; i < kAutoCycleOptionCount; ++i) {
+    const uint8_t idx = static_cast<uint8_t>((autoCycleCursor_ + i) % kAutoCycleOptionCount);
+    if ((filteredMask & kAutoCyclePageOptions[idx].bit) != 0) {
+      autoCycleCursor_ = static_cast<uint8_t>((idx + 1U) % kAutoCycleOptionCount);
+      return kAutoCyclePageOptions[idx].id;
+    }
+  }
+
+  autoCycleCursor_ = 1;
+  return IPage::Id::kDashboard;
 }

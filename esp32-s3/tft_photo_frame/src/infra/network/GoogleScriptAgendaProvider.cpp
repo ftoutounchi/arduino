@@ -6,6 +6,84 @@
 
 #include "config/AppConfig.h"
 
+namespace {
+void trimInPlace(String* text) {
+  if (text == nullptr) {
+    return;
+  }
+  text->trim();
+}
+
+bool extractFieldFromLegacyEvent(const String& eventText,
+                                 const char* key,
+                                 String* outValue) {
+  if (key == nullptr || outValue == nullptr) {
+    return false;
+  }
+
+  const String marker = String(key) + "=";
+  const int keyPos = eventText.indexOf(marker);
+  if (keyPos < 0) {
+    return false;
+  }
+
+  int valueStart = keyPos + static_cast<int>(marker.length());
+  while (valueStart < eventText.length() && eventText[valueStart] == ' ') {
+    ++valueStart;
+  }
+
+  int valueEnd = eventText.length();
+  for (int i = valueStart; i < eventText.length(); ++i) {
+    const char ch = eventText[i];
+    if (ch == ',' || ch == '}') {
+      valueEnd = i;
+      break;
+    }
+  }
+
+  *outValue = eventText.substring(valueStart, valueEnd);
+  trimInPlace(outValue);
+  return outValue->length() > 0;
+}
+
+uint8_t parseLegacyEventList(const String& payload, IAgendaProvider::Event* outEvents, uint8_t maxEvents) {
+  if (outEvents == nullptr || maxEvents == 0) {
+    return 0;
+  }
+
+  uint8_t written = 0;
+  int cursor = 0;
+  while (cursor < payload.length() && written < maxEvents) {
+    const int openBrace = payload.indexOf('{', cursor);
+    if (openBrace < 0) {
+      break;
+    }
+    const int closeBrace = payload.indexOf('}', openBrace + 1);
+    if (closeBrace < 0) {
+      break;
+    }
+
+    const String eventChunk = payload.substring(openBrace + 1, closeBrace);
+    String title;
+    String start;
+    if (!extractFieldFromLegacyEvent(eventChunk, "title", &title)) {
+      title = "(No title)";
+    }
+    extractFieldFromLegacyEvent(eventChunk, "startDate", &start);
+    if (start.length() == 0) {
+      extractFieldFromLegacyEvent(eventChunk, "start", &start);
+    }
+
+    outEvents[written].title = title;
+    outEvents[written].startIso = start;
+    ++written;
+    cursor = closeBrace + 1;
+  }
+
+  return written;
+}
+}  // namespace
+
 GoogleScriptAgendaProvider::GoogleScriptAgendaProvider(WifiManager& wifi) : wifi_(wifi) {}
 
 bool GoogleScriptAgendaProvider::fetchEvents(Event* outEvents,
@@ -69,6 +147,12 @@ bool GoogleScriptAgendaProvider::fetchEvents(Event* outEvents,
   DynamicJsonDocument doc(4096);
   const DeserializationError err = deserializeJson(doc, payload);
   if (err) {
+    const uint8_t written = parseLegacyEventList(payload, outEvents, maxEvents);
+    if (written > 0) {
+      *outCount = written;
+      return true;
+    }
+
     Serial.printf("Agenda JSON parse error: %s\n", err.c_str());
     if (outErrorText != nullptr) {
       *outErrorText = "Agenda JSON";
@@ -91,7 +175,8 @@ bool GoogleScriptAgendaProvider::fetchEvents(Event* outEvents,
     }
 
     outEvents[written].title = event["title"] | "(No title)";
-    outEvents[written].startIso = event["start"] | "";
+    const char* startText = event["start"] | event["startDate"] | event["date"] | "";
+    outEvents[written].startIso = startText;
     ++written;
   }
 

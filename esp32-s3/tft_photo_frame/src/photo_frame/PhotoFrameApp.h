@@ -53,9 +53,14 @@ class PhotoFrameApp {
   ConfigWebServer configWeb_;
 
   bool configReloadPending_;
+  bool globalTimeoutPageTracked_;
+  IPage::Id globalTimeoutPageId_;
+  bool globalTimeoutEntryFromAutoCycle_;
+  uint32_t globalTimeoutEnteredAtMs_;
 
   static void onWebConfigChanged(void* ctx);
   void registerPages();
   void requestConfigReload();
   void processConfigReload();
+  void applyGlobalPageAutoTimeout(uint32_t nowMs);
 };

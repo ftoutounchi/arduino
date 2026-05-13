@@ -45,6 +45,21 @@ const char kConfigPageHtml[] PROGMEM = R"HTML(
     .group-box .row { grid-template-columns:190px 1fr; margin-bottom:8px; }
     .row { display:grid; grid-template-columns: 260px 1fr; gap:10px; align-items:center; margin-bottom:10px; }
     .row label { color:var(--muted); }
+    .page-choices { display:flex; flex-wrap:wrap; gap:8px; }
+    .page-chip {
+      display:inline-flex;
+      align-items:center;
+      gap:7px;
+      background:#0a152f;
+      border:1px solid #2d4267;
+      border-radius:999px;
+      padding:7px 10px;
+      color:var(--text);
+      font-size:13px;
+      white-space:nowrap;
+      cursor:pointer;
+    }
+    .page-chip input { accent-color:#3b82f6; }
     input[type="text"], input[type="number"], input[type="password"], input[type="date"], select, textarea {
       width:100%; box-sizing:border-box; background:#0a1224; color:var(--text); border:1px solid #2a3b61; border-radius:8px; padding:9px;
     }
@@ -157,6 +172,15 @@ const char kConfigPageHtml[] PROGMEM = R"HTML(
         <div class="group-box">
           <h3>Photo Rotation</h3>
           <div class="row"><label>Auto Cycle Enabled</label><div class="check"><input id="auto_cycle_enabled" type="checkbox"></div></div>
+          <div class="row">
+            <label>Cycle Pages</label>
+            <div class="page-choices">
+              <label class="page-chip"><input id="auto_cycle_page_dashboard" type="checkbox"> Dashboard</label>
+              <label class="page-chip"><input id="auto_cycle_page_calendar" type="checkbox"> Calendar</label>
+              <label class="page-chip"><input id="auto_cycle_page_agenda" type="checkbox"> Agenda</label>
+              <label class="page-chip"><input id="auto_cycle_page_alarm" type="checkbox"> Alarm</label>
+            </div>
+          </div>
           <div class="row"><label>Auto Cycle Photo Count</label><input id="auto_cycle_photo_count" type="number" min="1"></div>
           <div class="row"><label>Auto Cycle Duration (s)</label><input id="auto_cycle_duration_sec" type="number" min="1"></div>
           <div class="row"><label>Photo Refresh (s)</label><input id="photo_refresh_sec" type="number" min="1"></div>
@@ -295,6 +319,27 @@ const char kConfigPageHtml[] PROGMEM = R"HTML(
     const n = Number(sec);
     if (!Number.isFinite(n) || n <= 0) return fallbackMs;
     return Math.max(1000, Math.round(n * 1000));
+  }
+
+  function setCycleMask(mask){
+    const m = Number(mask) & 0x0F;
+    document.getElementById('auto_cycle_page_dashboard').checked = (m & 0x01) !== 0;
+    document.getElementById('auto_cycle_page_calendar').checked = (m & 0x02) !== 0;
+    document.getElementById('auto_cycle_page_agenda').checked = (m & 0x04) !== 0;
+    document.getElementById('auto_cycle_page_alarm').checked = (m & 0x08) !== 0;
+  }
+
+  function collectCycleMask(){
+    let mask = 0;
+    if (document.getElementById('auto_cycle_page_dashboard').checked) mask |= 0x01;
+    if (document.getElementById('auto_cycle_page_calendar').checked) mask |= 0x02;
+    if (document.getElementById('auto_cycle_page_agenda').checked) mask |= 0x04;
+    if (document.getElementById('auto_cycle_page_alarm').checked) mask |= 0x08;
+    if (mask === 0) {
+      mask = 0x01;
+      document.getElementById('auto_cycle_page_dashboard').checked = true;
+    }
+    return mask;
   }
 
   function formatDateInput(year, month, day){
@@ -496,6 +541,7 @@ const char kConfigPageHtml[] PROGMEM = R"HTML(
       document.getElementById('auto_timeout_enabled').checked = !!cfg.auto_timeout_enabled;
       document.getElementById('auto_timeout_sec').value = msToSec(cfg.auto_timeout_ms ?? 30000, 30);
       document.getElementById('auto_cycle_enabled').checked = !!cfg.auto_cycle_enabled;
+      setCycleMask(cfg.auto_cycle_pages_mask ?? 0x01);
       document.getElementById('auto_cycle_photo_count').value = cfg.auto_cycle_photo_count ?? 2;
       document.getElementById('auto_cycle_duration_sec').value = msToSec(cfg.auto_cycle_duration_ms ?? 30000, 30);
       document.getElementById('photo_refresh_sec').value = msToSec(cfg.photo_refresh_ms ?? 10000, 10);
@@ -526,6 +572,7 @@ const char kConfigPageHtml[] PROGMEM = R"HTML(
       auto_timeout_enabled: document.getElementById('auto_timeout_enabled').checked,
       auto_timeout_ms: secToMs(document.getElementById('auto_timeout_sec').value, 30000),
       auto_cycle_enabled: document.getElementById('auto_cycle_enabled').checked,
+      auto_cycle_pages_mask: collectCycleMask(),
       auto_cycle_photo_count: Number(document.getElementById('auto_cycle_photo_count').value),
       auto_cycle_duration_ms: secToMs(document.getElementById('auto_cycle_duration_sec').value, 30000),
       photo_refresh_ms: secToMs(document.getElementById('photo_refresh_sec').value, 10000),
@@ -712,6 +759,7 @@ void ConfigWebServer::handleGetConfig() {
   doc["auto_timeout_enabled"] = Config::gAutoViewSettings.infoPageAutoTimeoutEnabled;
   doc["auto_timeout_ms"] = Config::gAutoViewSettings.infoPageAutoTimeoutMs;
   doc["auto_cycle_enabled"] = Config::gAutoViewSettings.infoPageAutoCycleEnabled;
+  doc["auto_cycle_pages_mask"] = Config::gAutoViewSettings.infoPageAutoCyclePagesMask;
   doc["auto_cycle_photo_count"] = Config::gAutoViewSettings.infoPageAutoCyclePhotoCount;
   doc["auto_cycle_duration_ms"] = Config::gAutoViewSettings.infoPageAutoCycleDurationMs;
   doc["photo_refresh_ms"] = Config::gAutoViewSettings.photoRefreshIntervalMs;
@@ -775,6 +823,8 @@ void ConfigWebServer::handlePostSettings() {
       doc["auto_timeout_ms"] | Config::gAutoViewSettings.infoPageAutoTimeoutMs;
   Config::gAutoViewSettings.infoPageAutoCycleEnabled =
       doc["auto_cycle_enabled"] | Config::gAutoViewSettings.infoPageAutoCycleEnabled;
+  Config::gAutoViewSettings.infoPageAutoCyclePagesMask =
+      doc["auto_cycle_pages_mask"] | Config::gAutoViewSettings.infoPageAutoCyclePagesMask;
   Config::gAutoViewSettings.infoPageAutoCyclePhotoCount =
       doc["auto_cycle_photo_count"] | Config::gAutoViewSettings.infoPageAutoCyclePhotoCount;
   Config::gAutoViewSettings.infoPageAutoCycleDurationMs =

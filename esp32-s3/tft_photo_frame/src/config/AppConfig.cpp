@@ -50,6 +50,7 @@ AutoViewSettings gAutoViewSettings = {
     kDefaultInfoPageAutoTimeoutEnabled,
     kDefaultInfoPageAutoTimeoutMs,
     kDefaultInfoPageAutoCycleEnabled,
+    kDefaultInfoPageAutoCyclePagesMask,
     kDefaultInfoPageAutoCyclePhotoCount,
     kDefaultInfoPageAutoCycleDurationMs,
     kDefaultPhotoRefreshIntervalMs,
@@ -66,6 +67,7 @@ void resetAutoViewSettingsToDefaults() {
   gAutoViewSettings.infoPageAutoTimeoutEnabled = kDefaultInfoPageAutoTimeoutEnabled;
   gAutoViewSettings.infoPageAutoTimeoutMs = kDefaultInfoPageAutoTimeoutMs;
   gAutoViewSettings.infoPageAutoCycleEnabled = kDefaultInfoPageAutoCycleEnabled;
+  gAutoViewSettings.infoPageAutoCyclePagesMask = kDefaultInfoPageAutoCyclePagesMask;
   gAutoViewSettings.infoPageAutoCyclePhotoCount = kDefaultInfoPageAutoCyclePhotoCount;
   gAutoViewSettings.infoPageAutoCycleDurationMs = kDefaultInfoPageAutoCycleDurationMs;
   gAutoViewSettings.photoRefreshIntervalMs = kDefaultPhotoRefreshIntervalMs;
@@ -106,6 +108,11 @@ static void normalizeAutoViewSettings() {
     gAutoViewSettings.infoPageAutoCyclePhotoCount = 1;
   } else if (gAutoViewSettings.infoPageAutoCyclePhotoCount > 200) {
     gAutoViewSettings.infoPageAutoCyclePhotoCount = 200;
+  }
+
+  gAutoViewSettings.infoPageAutoCyclePagesMask &= kAutoCyclePageMaskAll;
+  if (gAutoViewSettings.infoPageAutoCyclePagesMask == 0) {
+    gAutoViewSettings.infoPageAutoCyclePagesMask = kDefaultInfoPageAutoCyclePagesMask;
   }
 
   if (gAutoViewSettings.infoPageAutoCycleDurationMs < 1000) {
@@ -201,6 +208,8 @@ bool loadAutoViewSettings() {
       doc["auto_timeout_enabled"] | kDefaultInfoPageAutoTimeoutEnabled;
   gAutoViewSettings.infoPageAutoTimeoutMs = doc["auto_timeout_ms"] | kDefaultInfoPageAutoTimeoutMs;
   gAutoViewSettings.infoPageAutoCycleEnabled = doc["auto_cycle_enabled"] | kDefaultInfoPageAutoCycleEnabled;
+  gAutoViewSettings.infoPageAutoCyclePagesMask =
+      doc["auto_cycle_pages_mask"] | kDefaultInfoPageAutoCyclePagesMask;
   gAutoViewSettings.infoPageAutoCyclePhotoCount =
       doc["auto_cycle_photo_count"] | kDefaultInfoPageAutoCyclePhotoCount;
   gAutoViewSettings.infoPageAutoCycleDurationMs =
@@ -267,6 +276,7 @@ bool saveAutoViewSettings() {
   doc["auto_timeout_enabled"] = gAutoViewSettings.infoPageAutoTimeoutEnabled;
   doc["auto_timeout_ms"] = gAutoViewSettings.infoPageAutoTimeoutMs;
   doc["auto_cycle_enabled"] = gAutoViewSettings.infoPageAutoCycleEnabled;
+  doc["auto_cycle_pages_mask"] = gAutoViewSettings.infoPageAutoCyclePagesMask;
   doc["auto_cycle_photo_count"] = gAutoViewSettings.infoPageAutoCyclePhotoCount;
   doc["auto_cycle_duration_ms"] = gAutoViewSettings.infoPageAutoCycleDurationMs;
   doc["photo_refresh_ms"] = gAutoViewSettings.photoRefreshIntervalMs;

@@ -52,6 +52,13 @@ constexpr uint32_t kAgendaHttpTimeoutMs = 2500;
 constexpr bool kDefaultInfoPageAutoTimeoutEnabled = true;
 constexpr uint32_t kDefaultInfoPageAutoTimeoutMs = 30 * 1000;
 constexpr bool kDefaultInfoPageAutoCycleEnabled = true;
+constexpr uint8_t kAutoCyclePageDashboard = 0x01;
+constexpr uint8_t kAutoCyclePageCalendar = 0x02;
+constexpr uint8_t kAutoCyclePageAgenda = 0x04;
+constexpr uint8_t kAutoCyclePageAlarm = 0x08;
+constexpr uint8_t kAutoCyclePageMaskAll =
+    kAutoCyclePageDashboard | kAutoCyclePageCalendar | kAutoCyclePageAgenda | kAutoCyclePageAlarm;
+constexpr uint8_t kDefaultInfoPageAutoCyclePagesMask = kAutoCyclePageDashboard;
 constexpr uint16_t kDefaultInfoPageAutoCyclePhotoCount = 2;
 constexpr uint32_t kDefaultInfoPageAutoCycleDurationMs = 30 * 1000;
 constexpr uint32_t kDefaultPhotoRefreshIntervalMs = kRefreshIntervalMs;
@@ -64,6 +71,7 @@ struct AutoViewSettings {
   bool infoPageAutoTimeoutEnabled;
   uint32_t infoPageAutoTimeoutMs;
   bool infoPageAutoCycleEnabled;
+  uint8_t infoPageAutoCyclePagesMask;
   uint16_t infoPageAutoCyclePhotoCount;
   uint32_t infoPageAutoCycleDurationMs;
   uint32_t photoRefreshIntervalMs;

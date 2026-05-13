@@ -31,6 +31,7 @@ class SettingsView : public IView {
     kTimeoutEnabled,
     kTimeoutSeconds,
     kCycleEnabled,
+    kCyclePages,
     kCyclePhotoCount,
     kCycleDuration,
     kPhotoSeconds,
@@ -45,7 +46,7 @@ class SettingsView : public IView {
   };
 
   static constexpr uint8_t kTabCount = 4;
-  static constexpr uint8_t kRowCount = 6;
+  static constexpr uint8_t kRowCount = 7;
 
   LvglHost& host_;
   DisplayRenderer& display_;
